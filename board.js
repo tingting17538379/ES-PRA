@@ -164,6 +164,21 @@
     return 2;
   }
 
+  let hasRun = false;
+
+  function visualDir() {
+    // At start and after reset, face the camera so the front is visible.
+    // Once a run starts, use the real facing. Game rules / playerDirection unchanged.
+    const logical = currentDir();
+    try {
+      if (typeof gameState !== "undefined" && gameState) {
+        if (gameState.isExecuting || gameState.gameEnded || hasRun) return logical;
+      }
+    } catch (e) {}
+    if (hasRun) return logical;
+    return 2; // front
+  }
+
   function styleCells() {
     document.querySelectorAll(".maze-cell").forEach((cell) => {
       const m = cell.id && cell.id.match(/^cell-(\d+)-(\d+)$/);
@@ -243,7 +258,8 @@
             badge.style.top = a.y + "px";
             badge.style.marginLeft = "0";
             badge.style.marginTop = "0";
-            badge.style.transform = "translate(-50%, calc(-126px - 8px))";
+            const botH = (character && character.offsetHeight) ? character.offsetHeight : 126;
+            badge.style.transform = "translate(-50%, calc(-" + botH + "px - 8px))";
           }
         }
       }
@@ -273,7 +289,7 @@
     }
     const cellId = character.dataset.tile;
     const dir = currentDir();
-    const wrap = installRobot(character, dir, "bot");
+    const wrap = installRobot(character, visualDir(), "bot");
     if (wrap && lastCellId && cellId && lastCellId !== cellId && typeof gameState !== "undefined" && gameState.isExecuting && !reduced) {
       wrap.classList.remove("hop");
       void wrap.offsetWidth;
@@ -323,12 +339,23 @@
         if (cell) cell.classList.toggle("goal-lit", !!success);
       };
     }
+    if (typeof executeSequence === "function") {
+      const orig = executeSequence;
+      executeSequence = function () {
+        hasRun = true;
+        const ret = orig.apply(this, arguments);
+        afterPlayerUpdate();
+        return ret;
+      };
+    }
     if (typeof resetGame === "function") {
       const orig = resetGame;
       resetGame = function () {
         document.querySelectorAll(".maze-cell.goal-lit").forEach((c) => c.classList.remove("goal-lit"));
         lastCellId = null;
+        hasRun = false;
         orig.apply(this, arguments);
+        afterPlayerUpdate();
       };
     }
   }
@@ -417,16 +444,49 @@
   // Wrap game fns immediately (this script loads after they are defined,
   // and before DOMContentLoaded, so initMaze runs already-wrapped).
   wrapGameFns();
+  function updateCardCount() {
+    const el = document.querySelector(".card-count");
+    const area = document.getElementById("sequenceArea");
+    if (!el) return;
+    const n = area ? area.querySelectorAll(".sequence-token").length : 0;
+    const host = document.querySelector(".game-container");
+    const limit = host && host.getAttribute("data-card-limit");
+    el.textContent = limit ? ("已用 " + n + "/" + limit) : ("已用 " + n);
+    el.hidden = false;
+  }
+
+  function fitBoard() {
+    const container = document.querySelector(".maze-container");
+    if (!container) return;
+    const cw = container.clientWidth;
+    const ch = container.clientHeight;
+    if (cw < 40 || ch < 40) return;
+    // Design size at --cell 80: projected board ~500×440 (incl. robot)
+    const scale = Math.min(1.55, (cw * 0.88) / 500, (ch * 0.88) / 440);
+    const cell = Math.max(44, Math.round(80 * scale));
+    container.style.setProperty("--cell", cell + "px");
+    const grid = document.getElementById("mazeGrid");
+    if (grid) grid.style.setProperty("--cell", cell + "px");
+  }
+
   function start() {
     if (!document.getElementById("mazeGrid")) return;
     wrapBoard();
     spriteLayer();
     buildIntro();
-    window.addEventListener("resize", () => syncSprites());
+    updateCardCount();
+    const area = document.getElementById("sequenceArea");
+    if (area && window.MutationObserver) {
+      new MutationObserver(updateCardCount).observe(area, { childList: true, subtree: true });
+    }
+    const onFit = () => { fitBoard(); syncSprites(); };
+    window.addEventListener("resize", onFit);
     if (window.ResizeObserver) {
       const c = document.querySelector(".maze-container");
-      if (c) new ResizeObserver(() => syncSprites()).observe(c);
+      if (c) new ResizeObserver(onFit).observe(c);
     }
+    fitBoard();
+    requestAnimationFrame(() => { fitBoard(); syncSprites(); });
   }
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", start);
