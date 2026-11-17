@@ -7,6 +7,24 @@
     subtitle: "請引導機器人取得寶藏。"
   }, window.NEON_BOARD || {});
 
+  // Optional: rotate the whole board so the robot's START facing points toward
+  // the camera (NEON_BOARD.faceStart = true). viewTurns = number of 90° CW turns
+  // applied on top of the default rotateZ(-45deg). Screen-facing index of a
+  // logical dir d is (d + viewTurns) % 4 → [back(↖), right(↗), front(↘), left(↙)].
+  let viewTurns = 0;
+  function initViewTurns() {
+    if (!cfg.faceStart) return;
+    let d = 2;
+    try {
+      if (typeof gameState !== "undefined" && gameState && typeof gameState.playerDirection === "number") {
+        d = gameState.playerDirection;
+      }
+    } catch (e) {}
+    viewTurns = ((2 - d) % 4 + 4) % 4;
+  }
+  initViewTurns();
+  const SCREEN_ARROWS = ["↖️", "↗️", "↘️", "↙️"];
+
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   function robotSvg(prefix, facing) {
@@ -170,6 +188,7 @@
     // At start and after reset, face the camera so the front is visible.
     // Once a run starts, use the real facing. Game rules / playerDirection unchanged.
     const logical = currentDir();
+    if (cfg.faceStart) return (logical + viewTurns) % 4; // true screen-relative view
     try {
       if (typeof gameState !== "undefined" && gameState) {
         if (gameState.isExecuting || gameState.gameEnded || hasRun) return logical;
@@ -223,7 +242,9 @@
     if (el.parentElement !== layer) layer.appendChild(el);
     el.style.left = a.x + "px";
     el.style.top = a.y + "px";
-    el.style.zIndex = String(20 + a.z + (extraZ || 0));
+    // with a rotated board, stack billboards by screen depth (lower on screen = nearer)
+    const depth = cfg.faceStart ? Math.round(a.y / 4) : a.z;
+    el.style.zIndex = String(20 + depth + (extraZ || 0));
     el.dataset.tile = cell.id;
   }
 
@@ -290,6 +311,10 @@
     const cellId = character.dataset.tile;
     const dir = currentDir();
     const wrap = installRobot(character, visualDir(), "bot");
+    if (cfg.faceStart) {
+      const badge = document.querySelector(".direction-indicator");
+      if (badge) badge.textContent = SCREEN_ARROWS[(dir + viewTurns) % 4];
+    }
     if (wrap && lastCellId && cellId && lastCellId !== cellId && typeof gameState !== "undefined" && gameState.isExecuting && !reduced) {
       wrap.classList.remove("hop");
       void wrap.offsetWidth;
@@ -368,6 +393,8 @@
     stage.className = "maze-stage";
     const scene = document.createElement("div");
     scene.className = "maze-scene pre-enter";
+    if (cfg.faceStart) scene.style.setProperty("--rz", (-45 + 90 * viewTurns) + "deg");
+    if (cfg.faceStart) container.classList.add("face-start");
     scene.id = "mazeScene";
     const platform = document.createElement("div");
     platform.className = "maze-platform";
@@ -462,7 +489,9 @@
     const ch = container.clientHeight;
     if (cw < 40 || ch < 40) return;
     // Design size at --cell 80: projected board ~500×440 (incl. robot)
-    const scale = Math.min(1.55, (cw * 0.88) / 500, (ch * 0.88) / 440);
+    // faceStart puts the start tile at the far (top) corner, so the robot needs headroom above the board
+    const designH = cfg.faceStart ? 520 : 440;
+    const scale = Math.min(1.55, (cw * 0.88) / 500, (ch * 0.88) / designH);
     const cell = Math.max(44, Math.round(80 * scale));
     container.style.setProperty("--cell", cell + "px");
     const grid = document.getElementById("mazeGrid");

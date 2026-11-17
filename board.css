@@ -915,3 +915,6 @@ html body {
     animation: none;
   }
 }
+
+/* rotated board (faceStart): start tile is the far corner → nudge the board down for robot headroom */
+.maze-container.face-start .maze-stage { margin-top: calc(var(--cell, 80px) * 0.9); }
