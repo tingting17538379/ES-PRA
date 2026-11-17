@@ -23,6 +23,9 @@
     viewTurns = ((2 - d) % 4 + 4) % 4;
   }
   initViewTurns();
+  const defaultTurns = viewTurns;
+  const screenRel = !!(cfg.faceStart || cfg.viewRotate);
+  const vt = () => ((viewTurns % 4) + 4) % 4;
   const SCREEN_ARROWS = ["↖️", "↗️", "↘️", "↙️"];
 
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -188,7 +191,7 @@
     // At start and after reset, face the camera so the front is visible.
     // Once a run starts, use the real facing. Game rules / playerDirection unchanged.
     const logical = currentDir();
-    if (cfg.faceStart) return (logical + viewTurns) % 4; // true screen-relative view
+    if (screenRel) return (logical + vt()) % 4; // true screen-relative view
     try {
       if (typeof gameState !== "undefined" && gameState) {
         if (gameState.isExecuting || gameState.gameEnded || hasRun) return logical;
@@ -243,7 +246,7 @@
     el.style.left = a.x + "px";
     el.style.top = a.y + "px";
     // with a rotated board, stack billboards by screen depth (lower on screen = nearer)
-    const depth = cfg.faceStart ? Math.round(a.y / 4) : a.z;
+    const depth = screenRel ? Math.round(a.y / 4) : a.z;
     el.style.zIndex = String(20 + depth + (extraZ || 0));
     el.dataset.tile = cell.id;
   }
@@ -311,9 +314,9 @@
     const cellId = character.dataset.tile;
     const dir = currentDir();
     const wrap = installRobot(character, visualDir(), "bot");
-    if (cfg.faceStart) {
+    if (screenRel) {
       const badge = document.querySelector(".direction-indicator");
-      if (badge) badge.textContent = SCREEN_ARROWS[(dir + viewTurns) % 4];
+      if (badge) badge.textContent = SCREEN_ARROWS[(dir + vt()) % 4];
     }
     if (wrap && lastCellId && cellId && lastCellId !== cellId && typeof gameState !== "undefined" && gameState.isExecuting && !reduced) {
       wrap.classList.remove("hop");
@@ -385,6 +388,159 @@
     }
   }
 
+  // ---------- Decorative surroundings (NEON_BOARD.decor = true) ----------
+  // Stacked blocks + low-poly trees on a ring just outside the 4×4 grid.
+  // Lives inside .maze-scene so it rotates with the board (incl. faceStart)
+  // and is depth-sorted by the browser's 3D engine. No gameplay effect.
+  const TREE_SVG = `<svg viewBox="0 0 60 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <ellipse cx="30" cy="96" rx="17" ry="4.5" fill="rgba(11,37,69,.28)"/>
+    <rect x="25" y="70" width="10" height="26" rx="2" fill="#8a5a2b" stroke="#0b2545" stroke-width="3"/>
+    <polygon points="30,30 54,76 6,76" fill="#2f9e44" stroke="#0b2545" stroke-width="3.2" stroke-linejoin="round"/>
+    <polygon points="30,30 54,76 30,76" fill="#237a35"/>
+    <polygon points="30,14 49,52 11,52" fill="#40c057" stroke="#0b2545" stroke-width="3.2" stroke-linejoin="round"/>
+    <polygon points="30,14 49,52 30,52" fill="#2f9e44"/>
+    <polygon points="30,3 43,29 17,29" fill="#69db7c" stroke="#0b2545" stroke-width="3.2" stroke-linejoin="round"/>
+    <polygon points="30,3 43,29 30,29" fill="#40c057"/>
+    <polygon points="30,30 54,76 6,76" fill="none" stroke="#0b2545" stroke-width="3.2" stroke-linejoin="round"/>
+    <polygon points="30,14 49,52 11,52" fill="none" stroke="#0b2545" stroke-width="3.2" stroke-linejoin="round"/>
+    <polygon points="30,3 43,29 17,29" fill="none" stroke="#0b2545" stroke-width="3.2" stroke-linejoin="round"/>
+  </svg>`;
+
+  function buildDecor(scene, rzDeg) {
+    if (!cfg.decor || !scene) return;
+    const N = (typeof MAZE_SIZE === "number") ? MAZE_SIZE : 4;
+    const th = rzDeg * Math.PI / 180;
+    const sn = Math.sin(th), cs = Math.cos(th);
+    // screen-y of each side's outward normal (<0 → far side, away from viewer)
+    const sideY = { top: -cs, bottom: cs, left: -sn, right: sn };
+    const back = (k) => sideY[k] < -0.01;
+    const layer = document.createElement("div");
+    layer.className = "maze-decor";
+    layer.setAttribute("aria-hidden", "true");
+    const items = [];
+    for (let r = -1; r <= N; r++) {
+      for (let c = -1; c <= N; c++) {
+        const sides = [];
+        if (r === -1) sides.push("top");
+        if (r === N) sides.push("bottom");
+        if (c === -1) sides.push("left");
+        if (c === N) sides.push("right");
+        if (!sides.length) continue;
+        const nb = sides.filter(back).length;
+        const nf = sides.length - nb;
+        if (nb === 0) continue;                       // front edges stay clear
+        if (nb === 2) { items.push({ r, c, h: 3 }); continue; }   // far corner
+        if (nf === 1) { items.push({ r, c, h: 2 }); continue; }   // side corners
+        // along a far edge: distance from the far corner (1..N)
+        const side = sides[0];
+        const along = (side === "top" || side === "bottom") ? c : r;
+        const farEnd = (side === "top" || side === "bottom") ? (back("left") ? 0 : N - 1) : (back("top") ? 0 : N - 1);
+        const k = Math.abs(along - farEnd) + 1;
+        const horiz = (side === "top" || side === "bottom");
+        const pattern = horiz ? [2, "tree", 1, "tree"] : [2, 1, "tree", 1];
+        const v = pattern[(k - 1) % pattern.length];
+        items.push(v === "tree" ? { r, c, tree: true } : { r, c, h: v });
+      }
+    }
+    items.forEach((it) => {
+      const el = document.createElement("div");
+      el.style.setProperty("--r", String(it.r));
+      el.style.setProperty("--c", String(it.c));
+      if (it.tree) {
+        el.className = "decor-tree";
+        el.innerHTML = TREE_SVG;
+      } else {
+        el.className = "decor-cube";
+        el.style.setProperty("--h", String(it.h));
+        el.innerHTML = '<i class="df df-top"></i><i class="df df-side df-n"></i><i class="df df-side df-s"></i><i class="df df-side df-e"></i><i class="df df-side df-w"></i>';
+      }
+      layer.appendChild(el);
+    });
+    scene.appendChild(layer);
+    scene.style.setProperty("--platform-pad", "calc(var(--cell, 80px) + 12px)");
+  }
+
+  // ---------- View (camera) rotation (NEON_BOARD.viewRotate = true) ----------
+  // Rotates the whole board 90° per step with a ~400ms transition. Purely visual:
+  // game state is untouched, so it is allowed mid-run. Sprites re-anchor every
+  // frame; robot view art + badge follow the on-screen direction.
+  let rotating = false;
+  function rotateView(delta, toDefault) {
+    const scene = document.getElementById("mazeScene");
+    if (!scene) return;
+    if (toDefault) {
+      let diff = ((defaultTurns - viewTurns) % 4 + 4) % 4; // 0..3
+      if (diff === 3) diff = -1;
+      delta = diff;
+    }
+    if (!delta) return;
+    viewTurns += delta;
+    scene.classList.remove("entering", "pre-enter");
+    scene.classList.add("view-rotating");
+    const decor = scene.querySelector(".maze-decor");
+    if (decor) decor.classList.add("decor-hide");
+    scene.style.setProperty("--rz", (-45 + 90 * viewTurns) + "deg");
+    rotating = true;
+    trackDuring(520);
+    afterPlayerUpdate();
+    clearTimeout(rotateView._t);
+    rotateView._t = setTimeout(() => {
+      rotating = false;
+      scene.classList.remove("view-rotating");
+      // rebuild decor so blocks/trees stay on the far edges for the new view
+      const old = scene.querySelector(".maze-decor");
+      if (old) old.remove();
+      buildDecor(scene, -45 + 90 * viewTurns);
+      const fresh = scene.querySelector(".maze-decor");
+      if (fresh) {
+        fresh.classList.add("decor-hide");
+        void fresh.offsetWidth;
+        setTimeout(() => fresh.classList.remove("decor-hide"), 20);
+      }
+      fitBoard();
+      syncSprites();
+      afterPlayerUpdate();
+    }, 430);
+  }
+
+  function buildViewControls() {
+    if (!cfg.viewRotate) return;
+    const container = document.querySelector(".maze-container");
+    if (!container || container.querySelector(".view-controls")) return;
+    const box = document.createElement("div");
+    box.className = "view-controls";
+    box.setAttribute("role", "group");
+    box.setAttribute("aria-label", "轉動視角");
+    box.innerHTML = `
+      <button type="button" class="view-btn" data-rot="-1" title="向左轉動視角 (Q)" aria-label="向左轉動視角">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 6.5A8 8 0 1 1 4.6 14" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/><path d="M2.6 3.8 8.6 4.2 7.9 10.2Z" fill="currentColor"/></svg>
+      </button>
+      <button type="button" class="view-btn view-btn-reset" data-rot="0" title="重置視角" aria-label="重置視角">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2" fill="currentColor"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/></svg>
+      </button>
+      <button type="button" class="view-btn" data-rot="1" title="向右轉動視角 (E)" aria-label="向右轉動視角">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.5 6.5A8 8 0 1 0 19.4 14" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/><path d="M21.4 3.8 15.4 4.2 16.1 10.2Z" fill="currentColor"/></svg>
+      </button>
+      <span class="view-label">視角</span>`;
+    box.addEventListener("click", (e) => {
+      const b = e.target.closest(".view-btn");
+      if (!b) return;
+      const r = +b.dataset.rot;
+      if (r === 0) rotateView(0, true); else rotateView(r);
+    });
+    container.appendChild(box);
+    window.addEventListener("keydown", (e) => {
+      if (document.getElementById("introOverlay")) return;
+      const t = e.target;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const k = (e.key || "").toLowerCase();
+      if (k === "q") { e.preventDefault(); rotateView(-1); }
+      else if (k === "e") { e.preventDefault(); rotateView(1); }
+    });
+  }
+  window.NEON_ROTATE_VIEW = rotateView;
+
   function wrapBoard() {
     const grid = document.getElementById("mazeGrid");
     if (!grid || grid.closest(".maze-scene")) return;
@@ -393,8 +549,9 @@
     stage.className = "maze-stage";
     const scene = document.createElement("div");
     scene.className = "maze-scene pre-enter";
-    if (cfg.faceStart) scene.style.setProperty("--rz", (-45 + 90 * viewTurns) + "deg");
+    if (screenRel) scene.style.setProperty("--rz", (-45 + 90 * viewTurns) + "deg");
     if (cfg.faceStart) container.classList.add("face-start");
+    if (cfg.decor) container.classList.add("has-decor");
     scene.id = "mazeScene";
     const platform = document.createElement("div");
     platform.className = "maze-platform";
@@ -403,6 +560,7 @@
     stage.appendChild(scene);
     scene.appendChild(platform);
     scene.appendChild(grid);
+    buildDecor(scene, -45 + 90 * viewTurns);
   }
 
   function buildIntro() {
@@ -490,9 +648,11 @@
     if (cw < 40 || ch < 40) return;
     // Design size at --cell 80: projected board ~500×440 (incl. robot)
     // faceStart puts the start tile at the far (top) corner, so the robot needs headroom above the board
-    const designH = cfg.faceStart ? 520 : 440;
-    const scale = Math.min(1.55, (cw * 0.88) / 500, (ch * 0.88) / designH);
-    const cell = Math.max(44, Math.round(80 * scale));
+    const designH = cfg.decor ? 800 : (cfg.faceStart ? 520 : 440);
+    const designW = cfg.decor ? 880 : 500;
+    const fill = cfg.decor ? 0.94 : 0.88;
+    const scale = Math.min(1.55, (cw * fill) / designW, (ch * fill) / designH);
+    const cell = Math.max(cfg.decor ? 26 : 44, Math.round(80 * scale));
     container.style.setProperty("--cell", cell + "px");
     const grid = document.getElementById("mazeGrid");
     if (grid) grid.style.setProperty("--cell", cell + "px");
@@ -503,6 +663,7 @@
     wrapBoard();
     spriteLayer();
     buildIntro();
+    buildViewControls();
     updateCardCount();
     const area = document.getElementById("sequenceArea");
     if (area && window.MutationObserver) {
