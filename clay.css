@@ -246,3 +246,6 @@ body.theme-clay {
 /* isometric 3/4 robot: *-left views are the mirrored *-right art */
 .theme-clay .robot-img-front-left,
 .theme-clay .robot-img-back-left { transform: scaleX(-1); }
+
+/* no direction bubble above the robot (facing is shown by the 3/4 robot art) */
+.theme-clay .direction-indicator { display: none !important; }
