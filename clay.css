@@ -242,3 +242,7 @@ body.theme-clay {
 .theme-clay .intro-door-right { border-left: 6px solid #6cb4e0; }
 .theme-clay .intro-door-left::after,
 .theme-clay .intro-door-right::after { opacity: .35; }
+
+/* isometric 3/4 robot: *-left views are the mirrored *-right art */
+.theme-clay .robot-img-front-left,
+.theme-clay .robot-img-back-left { transform: scaleX(-1); }

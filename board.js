@@ -40,6 +40,11 @@
     const f = facing || "front";
     // Optional bitmap robot (NEON_BOARD.robotImages = {front, back, side}); side art faces right, left is mirrored.
     const ri = cfg.robotImages;
+    if (ri && ri.frontRight && /^(front|back)-(left|right)$/.test(f)) {
+      // diagonal (isometric 3/4) art: *-right drawn, *-left mirrored
+      const src = f.indexOf("front") === 0 ? ri.frontRight : (ri.backRight || ri.frontRight);
+      return `<img class="robot-img robot-img-diag robot-img-${f}" src="${src}" alt="" aria-hidden="true" draggable="false">`;
+    }
     if (ri && ri.front) {
       const src = f === "front" ? ri.front : f === "back" ? (ri.back || ri.front) : (ri.side || ri.front);
       return `<img class="robot-img robot-img-${f}" src="${src}" alt="" aria-hidden="true" draggable="false">`;
@@ -165,6 +170,22 @@
     return ["back", "right", "front", "left"][dir] || "front";
   }
 
+  // Screen-space facing for diagonal sprites: project the logical grid step of the
+  // robot's real direction through the current 3D view (measured from tile rects).
+  function diagFace() {
+    const a = document.getElementById("cell-0-0");
+    const r = document.getElementById("cell-1-0");
+    const c = document.getElementById("cell-0-1");
+    if (!a || !r || !c) return "front-right";
+    const ctr = (el) => { const b = el.getBoundingClientRect(); return [b.left + b.width / 2, b.top + b.height / 2]; };
+    const p0 = ctr(a), pr = ctr(r), pc = ctr(c);
+    const R = [pr[0] - p0[0], pr[1] - p0[1]], C = [pc[0] - p0[0], pc[1] - p0[1]];
+    const step = [[-1, 0], [0, 1], [1, 0], [0, -1]][currentDir()] || [1, 0];
+    const vx = step[0] * R[0] + step[1] * C[0];
+    const vy = step[0] * R[1] + step[1] * C[1];
+    return (vy > 0 ? "front" : "back") + "-" + (vx >= 0 ? "right" : "left");
+  }
+
   function installRobot(character, dir, prefix) {
     if (!character) return;
     character.dataset.facing = String(dir);
@@ -174,7 +195,7 @@
       wrap.className = "robot";
       character.appendChild(wrap);
     }
-    const face = facingName(dir);
+    const face = (cfg.robotImages && cfg.robotImages.frontRight) ? diagFace() : facingName(dir);
     if (wrap.dataset.face !== face) {
       if (wrap.dataset.face && cfg.robotImages && !reduced) {
         // soft clay "squash" when the bitmap robot changes facing
@@ -271,6 +292,11 @@
   function syncSprites() {
     const layer = spriteLayer();
     if (!layer) return;
+    if (cfg.robotImages && cfg.robotImages.frontRight) {
+      // keep diagonal facing in sync with the live view (intro drop-in, view rotation, resize)
+      const ch = document.querySelector(".character");
+      if (ch) installRobot(ch, visualDir(), "bot");
+    }
     // character + direction stay together
     const character = document.querySelector(".character");
     if (character) {
