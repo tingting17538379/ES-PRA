@@ -513,7 +513,14 @@
   function buildViewControls() {
     if (!cfg.viewRotate) return;
     const container = document.querySelector(".maze-container");
-    if (!container || container.querySelector(".view-controls")) return;
+    if (!container || document.querySelector(".view-controls")) return;
+    let block = container.parentElement;
+    if (!block || !block.classList.contains("maze-block")) {
+      block = document.createElement("div");
+      block.className = "maze-block";
+      container.parentElement.insertBefore(block, container);
+      block.appendChild(container);
+    }
     const box = document.createElement("div");
     box.className = "view-controls";
     box.setAttribute("role", "group");
@@ -535,7 +542,18 @@
       const r = +b.dataset.rot;
       if (r === 0) rotateView(0, true); else rotateView(r);
     });
-    container.appendChild(box);
+    block.appendChild(box);
+    function placeViewControls() {
+      const title = document.querySelector(".tokens-section .section-title");
+      const mobile = window.matchMedia("(max-width: 820px)").matches;
+      if (mobile && title) {
+        if (box.parentElement !== title) title.appendChild(box);
+      } else if (box.parentElement !== block) {
+        block.appendChild(box);
+      }
+    }
+    placeViewControls();
+    window.addEventListener("resize", placeViewControls);
     window.addEventListener("keydown", (e) => {
       if (document.getElementById("introOverlay")) return;
       const t = e.target;
@@ -694,8 +712,26 @@
       const c = document.querySelector(".maze-container");
       if (c) new ResizeObserver(onFit).observe(c);
     }
+    function dockMobileBar() {
+      const bar = document.querySelector("body.theme-light .status-area");
+      if (!bar) return;
+      const mobile = window.matchMedia("(max-width: 820px)").matches;
+      if (!mobile || !window.visualViewport) {
+        bar.style.transform = "";
+        return;
+      }
+      const vv = window.visualViewport;
+      const hidden = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      bar.style.transform = hidden ? ("translateY(" + (-hidden) + "px)") : "";
+    }
+    dockMobileBar();
+    window.addEventListener("resize", dockMobileBar);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", dockMobileBar);
+      window.visualViewport.addEventListener("scroll", dockMobileBar);
+    }
     fitBoard();
-    requestAnimationFrame(() => { fitBoard(); syncSprites(); });
+    requestAnimationFrame(() => { fitBoard(); syncSprites(); dockMobileBar(); });
   }
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", start);

@@ -607,6 +607,24 @@ html body {
   justify-content: center;
   perspective: 1100px;
 }
+/* wrapper so view-controls can sit in-flow on phones without covering tiles */
+.maze-block {
+  position: relative;
+  flex: 1 1 58%;
+  min-width: 0;
+  min-height: 0;
+  width: auto;
+  height: auto;
+  display: flex;
+  flex-direction: column;
+}
+.maze-block > .maze-container {
+  flex: 1 1 auto;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  max-width: none;
+}
 .maze-grid,
 .maze-scene .maze-grid {
   --cell: inherit;
@@ -820,6 +838,12 @@ html body {
     flex: 0 0 auto;
     width: 100%;
     height: min(42dvh, 380px);
+    align-self: center;
+  }
+  .maze-block {
+    flex: 0 0 auto;
+    width: 100%;
+    height: auto;
     align-self: center;
   }
   .controls-area-wrapper {
