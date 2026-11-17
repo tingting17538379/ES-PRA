@@ -380,6 +380,36 @@
     requestAnimationFrame(tick);
   }
 
+  // Goal "bloom" (NEON_BOARD.goalBloom = { flower }): the goal sprite (e.g. a sapling)
+  // squashes, swaps to the flower art and pops a few petals/sparkles.
+  function bloomGoal() {
+    const tr = document.querySelector(".sprite-layer .treasure") || document.querySelector(".treasure");
+    if (!tr || tr.classList.contains("bloomed") || tr.classList.contains("bloom-grow")) return;
+    const img = tr.querySelector("img");
+    const pre = new Image();
+    pre.src = cfg.goalBloom.flower;
+    const swap = () => {
+      if (img) { img.src = cfg.goalBloom.flower; img.alt = "花朵"; }
+      tr.classList.remove("bloom-grow");
+      tr.classList.add("bloomed");
+      const n = reduced ? 0 : 14;
+      for (let i = 0; i < n; i++) {
+        const p = document.createElement("span");
+        p.className = "bloom-p" + (i % 3 === 0 ? " bloom-spark" : "");
+        const ang = (Math.PI * 2 * i) / n + Math.random() * 0.5;
+        const dist = 0.55 + Math.random() * 0.45;
+        p.style.setProperty("--dx", (Math.cos(ang) * dist).toFixed(2));
+        p.style.setProperty("--dy", (Math.sin(ang) * dist * 0.8 - 0.35).toFixed(2));
+        p.style.animationDelay = (Math.random() * 120).toFixed(0) + "ms";
+        tr.appendChild(p);
+        p.addEventListener("animationend", () => p.remove(), { once: true });
+      }
+    };
+    if (reduced) { swap(); return; }
+    tr.classList.add("bloom-grow");
+    setTimeout(swap, 380);
+  }
+
   function wrapGameFns() {
     if (typeof initMaze === "function") {
       const orig = initMaze;
@@ -408,6 +438,7 @@
         if (!pos) return;
         const cell = document.getElementById(`cell-${pos.x}-${pos.y}`);
         if (cell) cell.classList.toggle("goal-lit", !!success);
+        if (success && cfg.goalBloom) bloomGoal();
       };
     }
     if (typeof executeSequence === "function") {

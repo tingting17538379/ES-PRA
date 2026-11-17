@@ -249,3 +249,73 @@ body.theme-clay {
 
 /* no direction bubble above the robot (facing is shown by the 3/4 robot art) */
 .theme-clay .direction-indicator { display: none !important; }
+
+/* ---------- goal: sapling → flower bloom (board.js goalBloom) ---------- */
+.theme-clay .sprite-layer .trap-img {
+  width: calc(var(--cell, 80px) * 0.8);
+  height: calc(var(--cell, 80px) * 0.72);
+  margin-left: calc(var(--cell, 80px) * -0.4);
+  margin-top: calc(var(--cell, 80px) * -0.58);
+  object-position: 50% 100%;
+}
+.theme-clay .sprite-layer .treasure {
+  width: calc(var(--cell, 80px) * 0.78);
+  height: calc(var(--cell, 80px) * 0.8);
+  margin-left: calc(var(--cell, 80px) * -0.39);
+  margin-top: calc(var(--cell, 80px) * -0.66);
+  transform-origin: 50% 100%;
+  overflow: visible;
+}
+.theme-clay .sprite-layer .treasure-img { object-fit: contain; object-position: 50% 100%; }
+.theme-clay .sprite-layer .treasure.bloom-grow {
+  /* slide out beside the robot, then squash */
+  margin-left: calc(var(--cell, 80px) * 0.155);
+  transition: margin-left .2s ease-out;
+  animation: saplingSquash .38s ease-in forwards;
+}
+@keyframes saplingSquash {
+  0% { transform: scale(1, 1); }
+  45% { transform: scale(1.18, .78); }
+  100% { transform: scale(.7, 1.25); }
+}
+.theme-clay .sprite-layer .treasure.bloomed {
+  width: calc(var(--cell, 80px) * 1.05);
+  height: calc(var(--cell, 80px) * 1.85);
+  /* sits beside the robot (which stands on the goal tile) so the bloom stays visible */
+  margin-left: calc(var(--cell, 80px) * 0.02);
+  margin-top: calc(var(--cell, 80px) * -1.71);
+  animation: flowerPop .6s cubic-bezier(.2, 1.6, .4, 1) both;
+}
+@keyframes flowerPop {
+  0% { transform: scale(.35, .6); }
+  60% { transform: scale(1.08, .95); }
+  100% { transform: scale(1, 1); }
+}
+.theme-clay .sprite-layer .treasure .bloom-p {
+  position: absolute;
+  left: 50%;
+  top: 30%;
+  width: calc(var(--cell, 80px) * 0.26);
+  height: calc(var(--cell, 80px) * 0.2);
+  margin: calc(var(--cell, 80px) * -0.1) 0 0 calc(var(--cell, 80px) * -0.13);
+  z-index: 2;
+  border-radius: 60% 60% 60% 60% / 70% 70% 50% 50%;
+  background: #f58a95;
+  box-shadow: inset 0 -2px 0 rgba(0,0,0,.12), inset 0 2px 0 rgba(255,255,255,.4);
+  pointer-events: none;
+  animation: petalFly 1.2s ease-out both;
+}
+.theme-clay .sprite-layer .treasure .bloom-p.bloom-spark {
+  width: calc(var(--cell, 80px) * 0.18);
+  height: calc(var(--cell, 80px) * 0.18);
+  border-radius: 50%;
+  background: #ffd84d;
+}
+@keyframes petalFly {
+  0% { transform: translate(0, 0) scale(.6) rotate(0deg); opacity: 0; }
+  15% { opacity: 1; }
+  100% {
+    transform: translate(calc(var(--dx) * var(--cell, 80px)), calc(var(--dy) * var(--cell, 80px) + var(--cell, 80px) * 0.35)) scale(1) rotate(200deg);
+    opacity: 0;
+  }
+}
