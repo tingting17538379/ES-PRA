@@ -186,8 +186,10 @@
     return (vy > 0 ? "front" : "back") + "-" + (vx >= 0 ? "right" : "left");
   }
 
+  let cheering = false; // goalBloom: robot turned to look up at the flower
   function installRobot(character, dir, prefix) {
     if (!character) return;
+    if (cheering) return character.querySelector(":scope > .robot");
     character.dataset.facing = String(dir);
     let wrap = character.querySelector(":scope > .robot");
     if (!wrap) {
@@ -392,6 +394,23 @@
       if (img) { img.src = cfg.goalBloom.flower; img.alt = "花朵"; }
       tr.classList.remove("bloom-grow");
       tr.classList.add("bloomed");
+      // robot turns to look up at the flower growing behind it, then hops for joy
+      setTimeout(() => {
+        const ch = document.querySelector(".sprite-layer .character") || document.querySelector(".character");
+        const wrap = ch && ch.querySelector(":scope > .robot");
+        const ri = cfg.robotImages || {};
+        if (!wrap || !tr.classList.contains("bloomed")) return;
+        cheering = true;
+        if (ri.back) {
+          wrap.dataset.face = "cheer";
+          wrap.innerHTML = `<img class="robot-img robot-img-back robot-img-cheer" src="${ri.back}" alt="" aria-hidden="true" draggable="false">`;
+        }
+        if (!reduced) {
+          wrap.classList.remove("hop", "turning", "cheer");
+          void wrap.offsetWidth;
+          wrap.classList.add("cheer");
+        }
+      }, reduced ? 0 : 650);
       const n = reduced ? 0 : 14;
       for (let i = 0; i < n; i++) {
         const p = document.createElement("span");
@@ -414,6 +433,7 @@
     if (typeof initMaze === "function") {
       const orig = initMaze;
       initMaze = function () {
+        cheering = false;
         const layer = document.querySelector(".sprite-layer");
         if (layer) layer.innerHTML = "";
         orig.apply(this, arguments);
@@ -456,6 +476,7 @@
         document.querySelectorAll(".maze-cell.goal-lit").forEach((c) => c.classList.remove("goal-lit"));
         lastCellId = null;
         hasRun = false;
+        cheering = false;
         orig.apply(this, arguments);
         afterPlayerUpdate();
       };

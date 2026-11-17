@@ -267,34 +267,41 @@ body.theme-clay {
   overflow: visible;
 }
 .theme-clay .sprite-layer .treasure-img { object-fit: contain; object-position: 50% 100%; }
-.theme-clay .sprite-layer .treasure.bloom-grow {
-  /* slide out beside the robot, then squash */
-  margin-left: calc(var(--cell, 80px) * 0.155);
-  transition: margin-left .2s ease-out;
-  animation: saplingSquash .38s ease-in forwards;
-}
+.theme-clay .sprite-layer .treasure.bloom-grow { animation: saplingSquash .38s ease-in forwards; }
 @keyframes saplingSquash {
   0% { transform: scale(1, 1); }
   45% { transform: scale(1.18, .78); }
-  100% { transform: scale(.7, 1.25); }
+  100% { transform: scale(.75, 1.3); }
 }
+/* tall flower grows straight up from the goal tile, standing just BEHIND the robot
+   (bottom anchored slightly up-screen = farther from the viewer in every view rotation;
+   the sprite layer already stacks the robot in front). */
 .theme-clay .sprite-layer .treasure.bloomed {
-  width: calc(var(--cell, 80px) * 1.05);
-  height: calc(var(--cell, 80px) * 1.85);
-  /* sits beside the robot (which stands on the goal tile) so the bloom stays visible */
-  margin-left: calc(var(--cell, 80px) * 0.02);
-  margin-top: calc(var(--cell, 80px) * -1.71);
-  animation: flowerPop .6s cubic-bezier(.2, 1.6, .4, 1) both;
+  width: calc(var(--cell, 80px) * 1.04);
+  height: calc(var(--cell, 80px) * 2.9);
+  margin-left: calc(var(--cell, 80px) * -0.52);
+  margin-top: calc(var(--cell, 80px) * -3.04);
+  animation: flowerRise .9s cubic-bezier(.25, 1.45, .45, 1) both;
 }
-@keyframes flowerPop {
-  0% { transform: scale(.35, .6); }
-  60% { transform: scale(1.08, .95); }
+@keyframes flowerRise {
+  0% { transform: scale(.55, .3); }
+  55% { transform: scale(1.05, 1.06); }
+  80% { transform: scale(.97, .99); }
   100% { transform: scale(1, 1); }
+}
+.theme-clay .sprite-layer .robot.cheer { animation: robotCheer .9s ease-out; }
+@keyframes robotCheer {
+  0%, 100% { transform: translateY(0) scale(1, 1); }
+  12% { transform: translateY(0) scale(1.08, .9); }
+  32% { transform: translateY(-30%) scale(.95, 1.06); }
+  50% { transform: translateY(0) scale(1.08, .92); }
+  68% { transform: translateY(-18%) scale(.97, 1.04); }
+  84% { transform: translateY(0) scale(1.04, .96); }
 }
 .theme-clay .sprite-layer .treasure .bloom-p {
   position: absolute;
   left: 50%;
-  top: 30%;
+  top: 13%;
   width: calc(var(--cell, 80px) * 0.26);
   height: calc(var(--cell, 80px) * 0.2);
   margin: calc(var(--cell, 80px) * -0.1) 0 0 calc(var(--cell, 80px) * -0.13);
