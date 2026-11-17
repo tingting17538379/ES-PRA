@@ -29,11 +29,21 @@
   const SCREEN_ARROWS = ["↖️", "↗️", "↘️", "↙️"];
 
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (cfg.robotImages) {
+    // preload facing art so turns never flash
+    Object.values(cfg.robotImages).forEach((src) => { const im = new Image(); im.src = src; });
+  }
 
   function robotSvg(prefix, facing) {
     // Original "Lumo"-style bot: capsule head, visor with two dots,
     // offset crystal antenna, hover ring. Not a light-Bot copy.
     const f = facing || "front";
+    // Optional bitmap robot (NEON_BOARD.robotImages = {front, back, side}); side art faces right, left is mirrored.
+    const ri = cfg.robotImages;
+    if (ri && ri.front) {
+      const src = f === "front" ? ri.front : f === "back" ? (ri.back || ri.front) : (ri.side || ri.front);
+      return `<img class="robot-img robot-img-${f}" src="${src}" alt="" aria-hidden="true" draggable="false">`;
+    }
     return `<svg viewBox="0 0 80 110" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
       <defs>
         <linearGradient id="${prefix}-body" x1="0" y1="0" x2="0" y2="1">
@@ -166,6 +176,13 @@
     }
     const face = facingName(dir);
     if (wrap.dataset.face !== face) {
+      if (wrap.dataset.face && cfg.robotImages && !reduced) {
+        // soft clay "squash" when the bitmap robot changes facing
+        wrap.classList.remove("turning");
+        void wrap.offsetWidth;
+        wrap.classList.add("turning");
+        wrap.addEventListener("animationend", () => wrap.classList.remove("turning"), { once: true });
+      }
       wrap.dataset.face = face;
       wrap.innerHTML = robotSvg(prefix + "-" + face + "-" + Math.random().toString(36).slice(2, 6), face);
     }
