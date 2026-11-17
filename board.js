@@ -406,8 +406,14 @@
     <polygon points="30,3 43,29 17,29" fill="none" stroke="#0b2545" stroke-width="3.2" stroke-linejoin="round"/>
   </svg>`;
 
+  // On phones the full ring would force tiny tiles, so use a compact ring:
+  // only the far corner + the 2 nearest positions on each far edge, max 2 high.
+  const compactDecor = () => !!cfg.decor && window.matchMedia("(max-width: 820px)").matches;
+  let decorCompact = null;
   function buildDecor(scene, rzDeg) {
     if (!cfg.decor || !scene) return;
+    const compact = compactDecor();
+    decorCompact = compact;
     const N = (typeof MAZE_SIZE === "number") ? MAZE_SIZE : 4;
     const th = rzDeg * Math.PI / 180;
     const sn = Math.sin(th), cs = Math.cos(th);
@@ -429,8 +435,8 @@
         const nb = sides.filter(back).length;
         const nf = sides.length - nb;
         if (nb === 0) continue;                       // front edges stay clear
-        if (nb === 2) { items.push({ r, c, h: 3 }); continue; }   // far corner
-        if (nf === 1) { items.push({ r, c, h: 2 }); continue; }   // side corners
+        if (nb === 2) { items.push({ r, c, h: compact ? 2 : 3 }); continue; }   // far corner
+        if (nf === 1) { if (!compact) items.push({ r, c, h: 2 }); continue; }   // side corners
         // along a far edge: distance from the far corner (1..N)
         const side = sides[0];
         const along = (side === "top" || side === "bottom") ? c : r;
@@ -438,6 +444,7 @@
         const k = Math.abs(along - farEnd) + 1;
         const horiz = (side === "top" || side === "bottom");
         const pattern = horiz ? [2, "tree", 1, "tree"] : [2, 1, "tree", 1];
+        if (compact && k > 2) continue;
         const v = pattern[(k - 1) % pattern.length];
         items.push(v === "tree" ? { r, c, tree: true } : { r, c, h: v });
       }
@@ -457,7 +464,7 @@
       layer.appendChild(el);
     });
     scene.appendChild(layer);
-    scene.style.setProperty("--platform-pad", "calc(var(--cell, 80px) + 12px)");
+    scene.style.setProperty("--platform-pad", compact ? "calc(var(--cell, 80px) * 0.55 + 8px)" : "calc(var(--cell, 80px) + 12px)");
   }
 
   // ---------- View (camera) rotation (NEON_BOARD.viewRotate = true) ----------
@@ -648,9 +655,10 @@
     if (cw < 40 || ch < 40) return;
     // Design size at --cell 80: projected board ~500×440 (incl. robot)
     // faceStart puts the start tile at the far (top) corner, so the robot needs headroom above the board
-    const designH = cfg.decor ? 800 : (cfg.faceStart ? 520 : 440);
-    const designW = cfg.decor ? 880 : 500;
-    const fill = cfg.decor ? 0.94 : 0.88;
+    const cpt = compactDecor();
+    const designH = cfg.decor ? (cpt ? 560 : 800) : (cfg.faceStart ? 520 : 440);
+    const designW = cfg.decor ? (cpt ? 600 : 880) : 500;
+    const fill = cfg.decor ? (cpt ? 0.98 : 0.94) : 0.88;
     const scale = Math.min(1.55, (cw * fill) / designW, (ch * fill) / designH);
     const cell = Math.max(cfg.decor ? 26 : 44, Math.round(80 * scale));
     container.style.setProperty("--cell", cell + "px");
@@ -669,7 +677,17 @@
     if (area && window.MutationObserver) {
       new MutationObserver(updateCardCount).observe(area, { childList: true, subtree: true });
     }
-    const onFit = () => { fitBoard(); syncSprites(); };
+    const onFit = () => {
+      // switch between full / compact decor when crossing the phone breakpoint
+      if (cfg.decor && decorCompact !== null && decorCompact !== compactDecor()) {
+        const sc = document.getElementById("mazeScene");
+        const old = sc && sc.querySelector(".maze-decor");
+        if (old) old.remove();
+        if (sc) buildDecor(sc, -45 + 90 * viewTurns);
+      }
+      fitBoard();
+      syncSprites();
+    };
     window.addEventListener("resize", onFit);
     if (window.ResizeObserver) {
       const c = document.querySelector(".maze-container");
