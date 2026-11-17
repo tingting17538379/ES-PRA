@@ -186,7 +186,7 @@
     return (vy > 0 ? "front" : "back") + "-" + (vx >= 0 ? "right" : "left");
   }
 
-  let cheering = false; // goalBloom: robot turned to look up at the flower
+  let cheering = false; // goalBloom: robot turned to the viewer to celebrate
   function installRobot(character, dir, prefix) {
     if (!character) return;
     if (cheering) return character.querySelector(":scope > .robot");
@@ -394,16 +394,18 @@
       if (img) { img.src = cfg.goalBloom.flower; img.alt = "花朵"; }
       tr.classList.remove("bloom-grow");
       tr.classList.add("bloomed");
-      // robot turns to look up at the flower growing behind it, then hops for joy
+      // robot turns to face the viewer, then hops for joy while the flower grows behind it
       setTimeout(() => {
         const ch = document.querySelector(".sprite-layer .character") || document.querySelector(".character");
         const wrap = ch && ch.querySelector(":scope > .robot");
         const ri = cfg.robotImages || {};
         if (!wrap || !tr.classList.contains("bloomed")) return;
         cheering = true;
-        if (ri.back) {
+        const cheerSrc = ri.front || ri.back;
+        if (cheerSrc) {
+          // turn to face the viewer and celebrate (flower keeps growing behind)
           wrap.dataset.face = "cheer";
-          wrap.innerHTML = `<img class="robot-img robot-img-back robot-img-cheer" src="${ri.back}" alt="" aria-hidden="true" draggable="false">`;
+          wrap.innerHTML = `<img class="robot-img robot-img-front robot-img-cheer" src="${cheerSrc}" alt="" aria-hidden="true" draggable="false">`;
         }
         if (!reduced) {
           wrap.classList.remove("hop", "turning", "cheer");
