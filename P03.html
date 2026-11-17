@@ -266,6 +266,11 @@
         .token-c { background-image: url("./data/301.png"); /* C 前進或左轉 */ }
         .token-d { background-image: url("./data/302.png"); /* D 前進或右轉 */ }
         
+        .sequence-token.token-a { background-image: var(--icon-101); }
+        .sequence-token.token-b { background-image: var(--icon-102); }
+        .sequence-token.token-c { background-image: var(--icon-301); }
+        .sequence-token.token-d { background-image: var(--icon-302); }
+
         .command-token > div,
         .sequence-token > div {
             display: none !important;
@@ -453,6 +458,7 @@
         }
     
     </style>
+    <link rel="stylesheet" href="icons.css">
     <link rel="stylesheet" href="board.css">
 </head>
 <body>
