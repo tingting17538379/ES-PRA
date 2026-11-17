@@ -445,6 +445,7 @@
         }
     
     </style>
+    <link rel="stylesheet" href="board.css">
 </head>
 <body>
     <div class="game-container">
@@ -783,5 +784,14 @@
             setupDragAndDrop();
         });
     </script>
+
+    <script>
+        window.NEON_BOARD = {
+            level: "01",
+            title: "循序結構",
+            subtitle: "請利用下列 3 種指令牌，引導小新取得寶藏。"
+        };
+    </script>
+    <script src="board.js"></script>
 </body>
 </html>

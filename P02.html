@@ -454,6 +454,7 @@
         }
     
     </style>
+    <link rel="stylesheet" href="board.css">
 </head>
 <body>
     <div class="game-container">
@@ -860,5 +861,14 @@
             setupDragAndDrop();
         });
     </script>
+
+    <script>
+        window.NEON_BOARD = {
+            level: "02",
+            title: "重複結構",
+            subtitle: "請用最少的指令牌，幫助小新取得寶藏。小新無法通過三角錐，必須繞開前進！"
+        };
+    </script>
+    <script src="board.js"></script>
 </body>
 </html>

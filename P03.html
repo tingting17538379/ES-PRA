@@ -453,6 +453,7 @@
         }
     
     </style>
+    <link rel="stylesheet" href="board.css">
 </head>
 <body>
     <div class="game-container">
@@ -870,5 +871,14 @@
             setupDragAndDrop();
         });
     </script>
+
+    <script>
+        window.NEON_BOARD = {
+            level: "03",
+            title: "選擇結構",
+            subtitle: "請利用下列 4 種指令牌，但不超過 8 張牌，幫助小新取得寶藏。"
+        };
+    </script>
+    <script src="board.js"></script>
 </body>
 </html>
