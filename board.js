@@ -656,9 +656,10 @@
     // Design size at --cell 80: projected board ~500×440 (incl. robot)
     // faceStart puts the start tile at the far (top) corner, so the robot needs headroom above the board
     const cpt = compactDecor();
-    const designH = cfg.decor ? (cpt ? 560 : 800) : (cfg.faceStart ? 520 : 440);
-    const designW = cfg.decor ? (cpt ? 600 : 880) : 500;
-    const fill = cfg.decor ? (cpt ? 0.98 : 0.94) : 0.88;
+    // faceStart boards (no decor) use a measured footprint so the map fills the free space
+    const designH = cfg.decor ? (cpt ? 560 : 800) : (cfg.faceStart ? (window.matchMedia("(max-width: 820px)").matches ? 470 : 560) : 440);
+    const designW = cfg.decor ? (cpt ? 600 : 880) : (cfg.faceStart ? 545 : 500);
+    const fill = cfg.decor ? (cpt ? 0.98 : 0.94) : (cfg.faceStart ? 0.97 : 0.88);
     const scale = Math.min(1.55, (cw * fill) / designW, (ch * fill) / designH);
     const cell = Math.max(cfg.decor ? 26 : 44, Math.round(80 * scale));
     container.style.setProperty("--cell", cell + "px");

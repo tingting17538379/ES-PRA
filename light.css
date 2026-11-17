@@ -254,7 +254,7 @@ body.theme-light .maze-container {
   /* big map: width-driven height */
   body.theme-light .maze-container {
     width: 100%;
-    height: min(96vw, 430px) !important;
+    height: min(84vw, 400px) !important;
     flex: 0 0 auto;
     margin: 0 -4px;
   }
