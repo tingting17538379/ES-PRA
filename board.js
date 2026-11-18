@@ -31,7 +31,7 @@
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   if (cfg.robotImages) {
     // preload facing art so turns never flash
-    Object.values(cfg.robotImages).forEach((src) => { const im = new Image(); im.src = src; });
+    Object.values(cfg.robotImages).flat().forEach((src) => { if (typeof src === "string") { const im = new Image(); im.src = src; } });
   }
 
   function robotSvg(prefix, facing) {
@@ -403,13 +403,52 @@
       { duration: WALK_MS, easing: "cubic-bezier(.35,.1,.65,.9)" }
     );
   }
+  // Walk frames (NEON_BOARD.robotImages.frontRightWalk): while walking in a
+  // front-diagonal facing (front-left is the mirrored art), cycle through a
+  // frame list once per tile, then rest on the normal sprite. A list of N frames
+  // is shown in equal slices (default for 4: stand, stride B, stand, stride A),
+  // matched to the .walk-frames bob in clay.css. A single string is a
+  // one-frame swap for the first half of the step (legacy trial).
+  const WALK_FRAMES = (() => {
+    const w = cfg.robotImages && cfg.robotImages.frontRightWalk;
+    if (!w) return null;
+    return Array.isArray(w) ? w.filter(Boolean) : [w];
+  })();
+  if (WALK_FRAMES) {
+    // preload + decode so swapping never shows a blank sprite
+    window.__walkFramePreload = [...new Set(WALK_FRAMES.concat(cfg.robotImages.frontRight || []))].map((src) => {
+      const im = new Image(); im.decoding = "sync"; im.src = src;
+      if (im.decode) im.decode().catch(() => {});
+      return im;
+    });
+  }
+  function swapFeet(wrap) {
+    const ri = cfg.robotImages || {};
+    if (!WALK_FRAMES || !ri.frontRight) return false;
+    const img = wrap.querySelector("img.robot-img-diag");
+    if (!img || !/^front-(left|right)$/.test(wrap.dataset.face || "")) return false;
+    // only swap once every frame is decoded, so nothing flickers or aborts mid-load
+    if (!(window.__walkFramePreload || []).every((im) => im.complete && im.naturalWidth)) return false;
+    const list = WALK_FRAMES.length > 1 ? WALK_FRAMES : [WALK_FRAMES[0], ri.frontRight];
+    const slice = WALK_MS / list.length;
+    list.forEach((src, i) => {
+      const set = () => { if (img.isConnected && /^front-/.test(wrap.dataset.face || "") && img.src !== src) img.src = src; };
+      if (i === 0) set(); else setTimeout(set, Math.round(slice * i));
+    });
+    setTimeout(() => {
+      if (img.isConnected && /^front-/.test(wrap.dataset.face || "") && img.src !== ri.frontRight) img.src = ri.frontRight;
+    }, WALK_MS);
+    return WALK_FRAMES.length > 1;
+  }
   function walkFrom(character, wrap, from, badge, fromBadge) {
     glide(character, from);
     if (badge && fromBadge) glide(badge, fromBadge);
-    wrap.classList.remove("hop", "walk", "bump");
+    wrap.classList.remove("hop", "walk", "walk-frames", "bump");
+    const framed = swapFeet(wrap);
     void wrap.offsetWidth;
     wrap.classList.add("walk");
-    wrap.addEventListener("animationend", () => wrap.classList.remove("walk"), { once: true });
+    if (framed) wrap.classList.add("walk-frames");
+    wrap.addEventListener("animationend", () => wrap.classList.remove("walk", "walk-frames"), { once: true });
   }
 
   // Blocked "forward" (rock or edge): lean toward the blocked tile, wobble, back.
@@ -440,7 +479,7 @@
         if (badge) { if (badge._glide) badge._glide.cancel(); badge._glide = badge.animate(frames, opts); }
       }
     }
-    wrap.classList.remove("hop", "walk", "bump");
+    wrap.classList.remove("hop", "walk", "walk-frames", "bump");
     void wrap.offsetWidth;
     wrap.classList.add("bump");
     wrap.addEventListener("animationend", () => wrap.classList.remove("bump"), { once: true });
@@ -481,7 +520,7 @@
           wrap.innerHTML = `<img class="robot-img robot-img-front robot-img-cheer" src="${cheerSrc}" alt="" aria-hidden="true" draggable="false">`;
         }
         if (!reduced) {
-          wrap.classList.remove("hop", "walk", "bump", "turning", "cheer");
+          wrap.classList.remove("hop", "walk", "walk-frames", "bump", "turning", "cheer");
           void wrap.offsetWidth;
           wrap.classList.add("cheer");
         }
@@ -697,59 +736,19 @@
     }, 430);
   }
 
+  // The on-screen 視角 (camera) control was removed at the user's request: the
+  // board always stays at its default view. Only the .maze-block wrapper the
+  // layout relies on is kept. (rotateView stays as an internal helper.)
   function buildViewControls() {
-    if (!cfg.viewRotate) return;
     const container = document.querySelector(".maze-container");
-    if (!container || document.querySelector(".view-controls")) return;
-    let block = container.parentElement;
-    if (!block || !block.classList.contains("maze-block")) {
-      block = document.createElement("div");
-      block.className = "maze-block";
-      container.parentElement.insertBefore(block, container);
-      block.appendChild(container);
+    if (!container) return;
+    const block = container.parentElement;
+    if (block && !block.classList.contains("maze-block")) {
+      const wrap = document.createElement("div");
+      wrap.className = "maze-block";
+      block.insertBefore(wrap, container);
+      wrap.appendChild(container);
     }
-    const box = document.createElement("div");
-    box.className = "view-controls";
-    box.setAttribute("role", "group");
-    box.setAttribute("aria-label", "轉動視角");
-    box.innerHTML = `
-      <button type="button" class="view-btn" data-rot="-1" title="向左轉動視角 (Q)" aria-label="向左轉動視角">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 6.5A8 8 0 1 1 4.6 14" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/><path d="M2.6 3.8 8.6 4.2 7.9 10.2Z" fill="currentColor"/></svg>
-      </button>
-      <button type="button" class="view-btn view-btn-reset" data-rot="0" title="重置視角" aria-label="重置視角">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2" fill="currentColor"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/></svg>
-      </button>
-      <button type="button" class="view-btn" data-rot="1" title="向右轉動視角 (E)" aria-label="向右轉動視角">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.5 6.5A8 8 0 1 0 19.4 14" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/><path d="M21.4 3.8 15.4 4.2 16.1 10.2Z" fill="currentColor"/></svg>
-      </button>
-      <span class="view-label">視角</span>`;
-    box.addEventListener("click", (e) => {
-      const b = e.target.closest(".view-btn");
-      if (!b) return;
-      const r = +b.dataset.rot;
-      if (r === 0) rotateView(0, true); else rotateView(r);
-    });
-    block.appendChild(box);
-    function placeViewControls() {
-      const title = document.querySelector(".tokens-section .section-title");
-      const mobile = window.matchMedia("(max-width: 820px)").matches;
-      if (mobile && title) {
-        if (box.parentElement !== title) title.appendChild(box);
-      } else if (box.parentElement !== block) {
-        block.appendChild(box);
-      }
-    }
-    placeViewControls();
-    window.addEventListener("resize", placeViewControls);
-    window.addEventListener("keydown", (e) => {
-      if (document.getElementById("introOverlay")) return;
-      const t = e.target;
-      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
-      const k = (e.key || "").toLowerCase();
-      if (k === "q") { e.preventDefault(); rotateView(-1); }
-      else if (k === "e") { e.preventDefault(); rotateView(1); }
-    });
   }
   window.NEON_ROTATE_VIEW = rotateView;
 
