@@ -864,9 +864,13 @@
     const designH = cfg.decor ? (cpt ? 560 : 800) : (cfg.faceStart ? (window.matchMedia("(max-width: 820px)").matches ? 470 : 560) : 440);
     const designW = cfg.decor ? (cpt ? 600 : 880) : (cfg.faceStart ? 545 : 500);
     const fill = cfg.decor ? (cpt ? 0.98 : 0.94) : (cfg.faceStart ? 0.97 : 0.88);
-    const scale = Math.min(1.55, (cw * fill) / designW, (ch * fill) / designH);
-    const cell = Math.max(cfg.decor ? 26 : 44, Math.round(80 * scale));
+    // Design sizes are for a 4×4 board; larger boards (MAZE_SIZE) scale the footprint up.
+    const N = (typeof MAZE_SIZE === "number") ? MAZE_SIZE : 4;
+    const k = (N * 85 + 3) / (4 * 85 + 3);
+    const scale = Math.min(1.55, (cw * fill) / (designW * k), (ch * fill) / (designH * k));
+    const cell = Math.max(cfg.decor ? 26 : (N > 4 ? 36 : 44), Math.round(80 * scale));
     container.style.setProperty("--cell", cell + "px");
+    container.style.setProperty("--n", String(N));
     const grid = document.getElementById("mazeGrid");
     if (grid) grid.style.setProperty("--cell", cell + "px");
   }

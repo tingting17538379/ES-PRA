@@ -370,8 +370,14 @@ body.theme-clay {
   cursor: default;
 }
 .theme-clay .loop-box.is-running { box-shadow: 0 0 0 3px #ffd84d, inset 0 3px 0 rgba(255,255,255,.85), 0 3px 0 #e9b66c; }
-.theme-clay .loop-head { display: flex; flex-direction: column; align-items: center; gap: 3px; }
-.theme-clay .loop-pass { min-height: 1.1em; font-size: 12px; font-weight: 900; color: #a35c00; white-space: nowrap; }
+.theme-clay .loop-head { position: relative; display: flex; align-items: center; justify-content: center; align-self: center; }
+/* 「第 x/N 次」: a small pill over the card's lower edge, only while running (no layout jump) */
+.theme-clay .loop-pass {
+  position: absolute; left: 50%; bottom: -7px; transform: translateX(-50%); z-index: 2; pointer-events: none;
+  font-size: 11px; font-weight: 900; color: #fff; white-space: nowrap; line-height: 1;
+  padding: 3px 7px; border-radius: 999px; background: #e08a12; box-shadow: 0 2px 0 #a35c00;
+}
+.theme-clay .loop-pass:empty { display: none; }
 .theme-clay .loop-body {
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
   min-height: 52px; padding: 6px 8px;
@@ -404,8 +410,6 @@ body.theme-clay {
 }
 /* repeat card labels: 「以下步驟」 on a smaller first line */
 .theme-clay .lbl-pre { display: block; font-size: .78em; line-height: 1.1; opacity: .92; }
-.theme-clay .loop-label { font-size: 12px; font-weight: 900; color: #a35c00; text-align: center; line-height: 1.2; white-space: nowrap; }
-.theme-clay .loop-label .lbl-pre { font-size: 11px; }
 .theme-clay .command-tokens .command-token > div.lbl-2line {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   line-height: 1.12; white-space: nowrap; padding-top: 3px; padding-bottom: 3px;

@@ -191,8 +191,8 @@
   overflow: visible;
 }
 .maze-stage {
-  width: calc(4 * var(--cell, 80px) + 23px);
-  height: calc(4 * var(--cell, 80px) + 23px);
+  width: calc(var(--n, 4) * (var(--cell, 80px) + 5px) + 3px);
+  height: calc(var(--n, 4) * (var(--cell, 80px) + 5px) + 3px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -276,8 +276,8 @@
 .maze-scene .maze-grid {
   display: block;
   position: relative;
-  width: calc(4 * var(--cell) + 23px);
-  height: calc(4 * var(--cell) + 23px);
+  width: calc(var(--n, 4) * (var(--cell) + 5px) + 3px);
+  height: calc(var(--n, 4) * (var(--cell) + 5px) + 3px);
   background-image: none;
   background-color: transparent;
   border: none;

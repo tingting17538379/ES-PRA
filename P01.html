@@ -147,8 +147,8 @@
         .maze-grid {
             --cell: 80px;
             display: grid;
-            grid-template-columns: repeat(4, var(--cell));
-            grid-template-rows: repeat(4, var(--cell));
+            grid-template-columns: repeat(5, var(--cell));
+            grid-template-rows: repeat(5, var(--cell));
             gap: 2px;
             background-image: url(".//data/03.png");
             background-size: cover;
@@ -525,8 +525,8 @@
         };
 
         // 迷宮配置
-        const MAZE_SIZE = 4;
-        const TREASURE_POS = { x: 2, y: 3 }; 
+        const MAZE_SIZE = 5;
+        const TREASURE_POS = { x: 3, y: 4 }; 
         const DIRECTIONS = ['⬆️', '➡️', '⬇️', '⬅️'];
 
         // 圖片 URL 修正為相對路徑
