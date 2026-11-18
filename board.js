@@ -496,13 +496,17 @@
 
   // Goal "bloom" (NEON_BOARD.goalBloom = { flower }): the goal sprite (e.g. a sapling)
   // squashes, swaps to the flower art and pops a few petals/sparkles.
+  let bloomGen = 0; // bumped on reset so pending bloom/cheer timers become no-ops
   function bloomGoal() {
     const tr = document.querySelector(".sprite-layer .treasure") || document.querySelector(".treasure");
     if (!tr || tr.classList.contains("bloomed") || tr.classList.contains("bloom-grow")) return;
     const img = tr.querySelector("img");
+    if (img && !tr.dataset.goalSrc) { tr.dataset.goalSrc = img.getAttribute("src") || ""; tr.dataset.goalAlt = img.alt || ""; }
     const pre = new Image();
     pre.src = cfg.goalBloom.flower;
+    const gen = bloomGen;
     const swap = () => {
+      if (gen !== bloomGen) return;
       if (img) { img.src = cfg.goalBloom.flower; img.alt = "花朵"; }
       tr.classList.remove("bloom-grow");
       tr.classList.add("bloomed");
@@ -511,7 +515,7 @@
         const ch = document.querySelector(".sprite-layer .character") || document.querySelector(".character");
         const wrap = ch && ch.querySelector(":scope > .robot");
         const ri = cfg.robotImages || {};
-        if (!wrap || !tr.classList.contains("bloomed")) return;
+        if (gen !== bloomGen || !wrap || !tr.classList.contains("bloomed")) return;
         cheering = true;
         const cheerSrc = ri.front || ri.back;
         if (cheerSrc) {
@@ -603,15 +607,62 @@
     if (typeof resetGame === "function") {
       const orig = resetGame;
       resetGame = function () {
-        document.querySelectorAll(".maze-cell.goal-lit").forEach((c) => c.classList.remove("goal-lit"));
-        lastCellId = null;
-        lastStep = null;
-        hasRun = false;
-        cheering = false;
+        resetBoardFx();
         orig.apply(this, arguments);
         afterPlayerUpdate();
       };
+      // Pages bind the 重置 button to their own (unwrapped) resetGame at load time,
+      // so also clear the board effects from a capture-phase listener that runs first.
+      // Reset during a run: stop the running sequence first (it checks gameEnded before
+      // every step), wait for its loop to finish, then reset; otherwise the old loop keeps
+      // moving the robot and posts "指令執行完畢…" over the fresh board.
+      let resetPending = false;
+      document.addEventListener("click", (e) => {
+        const btn = e.target && e.target.closest && e.target.closest("#resetBtn");
+        if (!btn || btn.disabled) return;
+        let running = false;
+        try { running = typeof gameState !== "undefined" && gameState && gameState.isExecuting; } catch (err) {}
+        if (running || resetPending) {
+          e.stopImmediatePropagation();
+          e.preventDefault();
+          if (resetPending) return;
+          resetPending = true;
+          try { gameState.gameEnded = true; } catch (err) {}
+          const t0 = Date.now();
+          const wait = () => {
+            let busy = false;
+            try { busy = gameState.isExecuting; } catch (err) {}
+            if (busy && Date.now() - t0 < 4000) { setTimeout(wait, 40); return; }
+            resetPending = false;
+            resetGame();
+          };
+          wait();
+          return;
+        }
+        resetBoardFx();
+      }, true);
     }
+  }
+
+  // Undo everything the win/run effects added, so reset always returns to a clean start:
+  // goal tile glow, bloomed flower (back to the sapling), cheer pose, pending timers.
+  function resetBoardFx() {
+    bloomGen++;
+    document.querySelectorAll(".maze-cell.goal-lit").forEach((c) => c.classList.remove("goal-lit"));
+    lastCellId = null;
+    lastStep = null;
+    hasRun = false;
+    cheering = false;
+    document.querySelectorAll(".treasure").forEach((tr) => {
+      tr.classList.remove("bloomed", "bloom-grow");
+      tr.querySelectorAll(".bloom-p").forEach((p) => p.remove());
+      const img = tr.querySelector("img");
+      if (img && tr.dataset.goalSrc) { img.src = tr.dataset.goalSrc; img.alt = tr.dataset.goalAlt || "樹苗"; }
+    });
+    document.querySelectorAll(".sprite-layer .robot").forEach((w) => {
+      w.classList.remove("hop", "walk", "walk-frames", "bump", "turning", "cheer");
+      if (w.dataset.face === "cheer") { delete w.dataset.face; w.innerHTML = ""; }
+    });
   }
 
   // ---------- Decorative surroundings (NEON_BOARD.decor = true) ----------
