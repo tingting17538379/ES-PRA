@@ -477,7 +477,7 @@
         <div class="level-tag">LEVEL 02</div>
         <div class="game-heading">
         <h1 class="game-title" id="gameTitle">淡蘭試煉迷宮：重複結構</h1>
-        <p class="game-subtitle">請利用下列 5 種指令牌，最少的指令牌張數，幫助<span id="characterName">機器人</span>走到樹苗、種出花朵。機器人無法通過石頭，必須繞開前進！</p>
+        <p class="game-subtitle">請利用下列 5 種指令牌，最少的指令牌張數，幫助<span id="characterName">機器人</span>走到樹苗、種出花朵。機器人無法通過石頭，必須繞開前進！<br>「以下步驟重複 N 次」牌會開一個框：把要重複的步驟放進框裡，再按「結束重複」。</p>
         </div>
         <a href="index.html" class="btn btn-home" title="回首頁" aria-label="回首頁"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 3.2 3 11h2v9h6v-6h2v6h6v-9h2L12 3.2z"/></svg></a>
         </header>
@@ -506,11 +506,11 @@
                         </div>
                         <div class="command-token token-d" draggable="true" data-command="D">
                             <div>D</div>
-                            <div>重複 2 次</div>
+                            <div class="lbl-2line"><span class="lbl-pre">以下步驟</span><span>重複 2 次</span></div>
                         </div>
                            <div class="command-token token-e" draggable="true" data-command="E">
                             <div>E</div>
-                            <div>重複 3 次</div>
+                            <div class="lbl-2line"><span class="lbl-pre">以下步驟</span><span>重複 3 次</span></div>
                         </div>
                     </div>
                 </div>
@@ -541,6 +541,7 @@
             playerDirection: 1,      // 面朝右 (➡️)
             playerRotation: 0, 
             sequence: [], 
+            openLoop: null,          // 正在編輯的重複框（sequence 索引）
             isExecuting: false,
             gameEnded: false
         };
@@ -684,48 +685,167 @@
                 sequenceArea.classList.remove('drag-over');
                 const command = e.dataTransfer.getData('text/plain');
                 if (command && !gameState.isExecuting) {
+                    const box = e.target.closest && e.target.closest('.loop-box');
+                    if (box && !isRepeat(command)) gameState.openLoop = Number(box.dataset.loop);
                     addToSequence(command);
                 }
             });
         }
 
+        // ===== 重複框：重複牌會重複「框內（後面）」那一組指令 =====
+        // sequence 項目：'A' | 'B' | 'C'，或 { repeat: 'D'|'E', body: ['A', ...] }
+        const REPEAT_TIMES = { D: 2, E: 3 };
+        const COMMAND_TEXT = { A: '前進一格', B: '原地左轉', C: '原地右轉', D: '以下步驟重複 2 次', E: '以下步驟重複 3 次' };
+        function isRepeat(c) { return c === 'D' || c === 'E'; }
+
+        function showSeqHint(msg) {
+            let h = document.getElementById('seqHint');
+            if (!h) {
+                h = document.createElement('div');
+                h.id = 'seqHint';
+                h.className = 'seq-hint';
+                h.setAttribute('role', 'status');
+                const area = document.getElementById('sequenceArea');
+                area.parentNode.insertBefore(h, area);
+            }
+            h.textContent = msg;
+            h.classList.add('show');
+            clearTimeout(h._t);
+            h._t = setTimeout(() => h.classList.remove('show'), 3200);
+        }
+
         function addToSequence(command) {
-            gameState.sequence.push(command);
+            const seq = gameState.sequence;
+            const open = gameState.openLoop !== null ? seq[gameState.openLoop] : null;
+            if (isRepeat(command)) {
+                if (open) {
+                    showSeqHint('重複框裡不能再放重複牌，請先按「結束重複」。');
+                    return;
+                }
+                seq.push({ repeat: command, body: [] });
+                gameState.openLoop = seq.length - 1;
+                showSeqHint('接著點要重複的指令牌放進框裡，放好後按「結束重複」。');
+            } else if (open && open.body) {
+                open.body.push(command);
+            } else {
+                seq.push(command);
+            }
             updateSequenceDisplay();
         }
 
-        window.removeFromSequence = function(index) {
-            if (!gameState.isExecuting) {
-                gameState.sequence.splice(index, 1);
+        // inner === undefined：刪除外面的指令牌或整個重複牌（框內的指令牌會移到框外，不會消失）
+        window.removeFromSequence = function(index, inner) {
+            if (gameState.isExecuting) return;
+            const seq = gameState.sequence;
+            const item = seq[index];
+            if (!item) return;
+            if (inner !== undefined && item.body) {
+                item.body.splice(inner, 1);
+            } else if (item.body) {
+                seq.splice(index, 1, ...item.body);
+                if (gameState.openLoop === index) gameState.openLoop = null;
+                else if (gameState.openLoop !== null && gameState.openLoop > index) gameState.openLoop += item.body.length - 1;
+            } else {
+                seq.splice(index, 1);
+                if (gameState.openLoop !== null && gameState.openLoop > index) gameState.openLoop -= 1;
+            }
+            updateSequenceDisplay();
+        }
+
+        window.closeLoop = function() {
+            gameState.openLoop = null;
+            const h = document.getElementById('seqHint');
+            if (h) h.classList.remove('show');
+            updateSequenceDisplay();
+        }
+
+        window.openLoopAt = function(index) {
+            if (gameState.isExecuting) return;
+            const item = gameState.sequence[index];
+            if (item && item.body) {
+                gameState.openLoop = index;
                 updateSequenceDisplay();
             }
         }
 
+        function makeSeqToken(command, key, onRemove) {
+            const token = document.createElement('div');
+            token.className = `sequence-token token-${command.toLowerCase()}`;
+            token.dataset.key = key;
+            token.innerHTML = `
+                <div>${command}</div>
+                <div style="font-size: 10px;">${COMMAND_TEXT[command]}</div>
+                <button class="remove-btn" type="button" aria-label="移除">×</button>
+            `;
+            token.querySelector('.remove-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                onRemove();
+            });
+            return token;
+        }
+
         function updateSequenceDisplay() {
             const sequenceArea = document.getElementById('sequenceArea');
-            if (gameState.sequence.length === 0) {
-                sequenceArea.innerHTML = '<div class="empty-sequence">將指令牌拖曳到這裡</div>';
+            const seq = gameState.sequence;
+            if (gameState.openLoop !== null && !(seq[gameState.openLoop] && seq[gameState.openLoop].body)) gameState.openLoop = null;
+            if (seq.length === 0) {
+                sequenceArea.innerHTML = '<div class="empty-sequence">將指令牌拖曳到這裡<br><small>「以下步驟重複 N 次」牌會開一個框，框裡的步驟會一起重複</small></div>';
                 return;
             }
 
             sequenceArea.innerHTML = '';
-            gameState.sequence.forEach((command, index) => {
-                const commandText = {
-                    'A': '前進一格',
-                    'B': '原地左轉', 
-                    'C': '原地右轉', 
-                    'D': '重複 2 次', 
-                    'E': '重複 3 次'
-                };
-                
-                const token = document.createElement('div');
-                token.className = `sequence-token token-${command.toLowerCase()}`;
-                token.innerHTML = `
-                    <div>${command}</div>
-                    <div style="font-size: 10px;">${commandText[command]}</div>
-                    <button class="remove-btn" onclick="removeFromSequence(${index})">×</button>
-                `;
-                sequenceArea.appendChild(token);
+            seq.forEach((item, index) => {
+                if (typeof item === 'string') {
+                    sequenceArea.appendChild(makeSeqToken(item, String(index), () => removeFromSequence(index)));
+                    return;
+                }
+                const isOpen = gameState.openLoop === index;
+                const times = REPEAT_TIMES[item.repeat];
+                const box = document.createElement('div');
+                box.className = 'loop-box' + (isOpen ? ' is-open' : '');
+                box.dataset.loop = String(index);
+                box.setAttribute('aria-label', `以下步驟重複 ${times} 次的框`);
+
+                const head = document.createElement('div');
+                head.className = 'loop-head';
+                head.appendChild(makeSeqToken(item.repeat, index + ':h', () => removeFromSequence(index)));
+                const label = document.createElement('span');
+                label.className = 'loop-label';
+                label.innerHTML = `<span class="lbl-pre">以下步驟</span>重複 ${times} 次`;
+                head.appendChild(label);
+                const pass = document.createElement('span');
+                pass.className = 'loop-pass';
+                head.appendChild(pass);
+
+                const body = document.createElement('div');
+                body.className = 'loop-body';
+                item.body.forEach((c, j) => {
+                    body.appendChild(makeSeqToken(c, index + ':' + j, () => removeFromSequence(index, j)));
+                });
+                if (isOpen || item.body.length === 0) {
+                    const slot = document.createElement('div');
+                    slot.className = 'loop-slot';
+                    slot.textContent = isOpen ? '＋ 點指令牌放進框裡' : '空的，點一下框來放入指令';
+                    body.appendChild(slot);
+                }
+
+                box.appendChild(head);
+                box.appendChild(body);
+                if (isOpen) {
+                    const done = document.createElement('button');
+                    done.type = 'button';
+                    done.className = 'loop-done';
+                    done.textContent = '結束重複';
+                    done.addEventListener('click', (e) => { e.stopPropagation(); closeLoop(); });
+                    box.appendChild(done);
+                } else {
+                    const tip = document.createElement('div');
+                    tip.className = 'loop-tip';
+                    tip.textContent = '點框可再加入';
+                    box.appendChild(tip);
+                    box.addEventListener('click', () => openLoopAt(index));
+                }
+                sequenceArea.appendChild(box);
             });
         }
         
@@ -807,44 +927,62 @@
               });
         }
         
-        // 遞迴執行指令序列 (支援重複指令 D, E)
+        // 執行指令序列：重複框會把框內那一組指令重複 N 次
         async function executeSequence() {
             if (gameState.sequence.length === 0 || gameState.isExecuting) return;
+
+            // 還開著的重複框，執行前自動結束
+            if (gameState.openLoop !== null) {
+                gameState.openLoop = null;
+                updateSequenceDisplay();
+            }
+            const emptyLoop = gameState.sequence.find(it => typeof it !== 'string' && it.body.length === 0);
+            if (emptyLoop) {
+                showResult(false, `「${COMMAND_TEXT[emptyLoop.repeat]}」的框裡還沒有指令牌，請先把要重複的動作放進框裡！`);
+                return;
+            }
             
             gameState.isExecuting = true;
             document.getElementById('executeBtn').disabled = true;
             document.getElementById('resultMessage').textContent = '';
             document.getElementById('resultMessage').className = 'result-message';
-            
-            let lastAtomicCommand = null;
 
             // 執行進度：已執行的指令牌變灰階、正在執行的保持亮色並標示
-            const seqTokens = Array.from(document.querySelectorAll('#sequenceArea .sequence-token'));
-            seqTokens.forEach(t => t.classList.remove('is-done', 'is-active'));
-            const markActive = (i) => { if (seqTokens[i]) seqTokens[i].classList.add('is-active'); };
-            const markDone = (i) => { if (seqTokens[i]) { seqTokens[i].classList.remove('is-active'); seqTokens[i].classList.add('is-done'); } };
+            const area = document.getElementById('sequenceArea');
+            const tok = (key) => area.querySelector(`.sequence-token[data-key="${key}"]`);
+            area.querySelectorAll('.sequence-token').forEach(t => t.classList.remove('is-done', 'is-active'));
+            area.querySelectorAll('.loop-pass').forEach(p => { p.textContent = ''; });
+            const markActive = (t) => { if (t) t.classList.add('is-active'); };
+            const markDone = (t) => { if (t) { t.classList.remove('is-active'); t.classList.add('is-done'); } };
 
-            for (let index = 0; index < gameState.sequence.length && !gameState.gameEnded; index++) {
-                const command = gameState.sequence[index];
-                markActive(index);
-                
-                if (command === 'A' || command === 'B' || command === 'C') {
-                    await executeAtomicCommand(command);
-                    lastAtomicCommand = command; 
-                } else if (command === 'D' || command === 'E') {
-                    if (!lastAtomicCommand) {
-                        gameState.gameEnded = true;
-                        showResult(false, `指令 ${command} 必須接在 A, B, 或 C 後面！`);
-                        break;
-                    }
-                    
-                    const extraRepeats = (command === 'D' ? 1 : 2); 
-                    
-                    for (let i = 0; i < extraRepeats && !gameState.gameEnded; i++) {
-                        await executeAtomicCommand(lastAtomicCommand);
+            const seq = gameState.sequence;
+            for (let index = 0; index < seq.length && !gameState.gameEnded; index++) {
+                const item = seq[index];
+                if (typeof item === 'string') {
+                    const t = tok(String(index));
+                    markActive(t);
+                    await executeAtomicCommand(item);
+                    markDone(t);
+                    continue;
+                }
+                const times = REPEAT_TIMES[item.repeat];
+                const head = tok(index + ':h');
+                const box = head && head.closest('.loop-box');
+                const pass = box && box.querySelector('.loop-pass');
+                markActive(head);
+                if (box) box.classList.add('is-running');
+                for (let p = 0; p < times && !gameState.gameEnded; p++) {
+                    if (pass) pass.textContent = `第 ${p + 1}/${times} 次`;
+                    item.body.forEach((c, j) => { const t = tok(index + ':' + j); if (t) t.classList.remove('is-done', 'is-active'); });
+                    for (let j = 0; j < item.body.length && !gameState.gameEnded; j++) {
+                        const t = tok(index + ':' + j);
+                        markActive(t);
+                        await executeAtomicCommand(item.body[j]);
+                        markDone(t);
                     }
                 }
-                markDone(index);
+                markDone(head);
+                if (box) box.classList.remove('is-running');
             }
             
             gameState.isExecuting = false;
@@ -867,6 +1005,7 @@
                 playerDirection: 1,
                 playerRotation: 0, 
                 sequence: [],
+                openLoop: null,
                 isExecuting: false,
                 gameEnded: false
             };
@@ -893,7 +1032,7 @@
         window.NEON_BOARD = {
             level: "02",
             title: "重複結構",
-            subtitle: "請用最少的指令牌，幫助機器人走到樹苗、種出花朵。機器人無法通過石頭，必須繞開前進！",
+            subtitle: "請用最少的指令牌，幫助機器人走到樹苗、種出花朵。機器人無法通過石頭，必須繞開前進！「以下步驟重複 N 次」牌會開一個框：把要重複的步驟放進框裡，再按「結束重複」。",
             goalBloom: { flower: "data:image/webp;base64,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" },
             faceStart: true,
             decor: false,
