@@ -253,6 +253,7 @@
   }
 
   let lastCellId = null;
+  let lastStep = null; // tile + facing after the previous executed step
 
   function spriteLayer() {
     const container = document.querySelector(".maze-container");
@@ -291,7 +292,15 @@
     el.dataset.tile = cell.id;
   }
 
+  const lastSpot = { bot: null, badge: null };
   function syncSprites() {
+    syncSpritesInner();
+    const ch = document.querySelector(".sprite-layer .character");
+    const bd = document.querySelector(".sprite-layer .direction-indicator");
+    lastSpot.bot = ch ? spritePos(ch) : null;
+    lastSpot.badge = bd ? spritePos(bd) : null;
+  }
+  function syncSpritesInner() {
     const layer = spriteLayer();
     if (!layer) return;
     if (cfg.robotImages && cfg.robotImages.frontRight) {
@@ -363,14 +372,78 @@
       const badge = document.querySelector(".direction-indicator");
       if (badge) badge.textContent = SCREEN_ARROWS[(dir + vt()) % 4];
     }
-    if (wrap && lastCellId && cellId && lastCellId !== cellId && typeof gameState !== "undefined" && gameState.isExecuting && !reduced) {
-      wrap.classList.remove("hop");
-      void wrap.offsetWidth;
-      wrap.classList.add("hop");
-      wrap.addEventListener("animationend", () => wrap.classList.remove("hop"), { once: true });
-    }
+    const moved = !!(wrap && lastCellId && cellId && lastCellId !== cellId && typeof gameState !== "undefined" && gameState.isExecuting && !reduced);
+    // remember where the sprites stood before snapping them to the new tile
+    // (the page re-creates the sprite every step, so use the last synced spot)
+    const badge = document.querySelector(".direction-indicator");
+    const from = moved ? lastSpot.bot : null;
+    const fromBadge = moved ? lastSpot.badge : null;
     lastCellId = cellId || lastCellId;
     syncSprites();
+    if (moved && from) walkFrom(character, wrap, from, badge, fromBadge);
+  }
+
+  // ---------- Walking (move forward) ----------
+  // The sprite is snapped to its new tile, then slides in from the old spot with
+  // an almost linear glide (no arc), while the inner .robot does a small
+  // two-step gait (bob + waddle tilt + squash) via the .walk class in CSS.
+  const WALK_MS = 440;
+  function spritePos(el) {
+    const x = parseFloat(el.style.left), y = parseFloat(el.style.top);
+    return (isFinite(x) && isFinite(y)) ? { x, y } : null;
+  }
+  function glide(el, from) {
+    const to = spritePos(el);
+    if (!el || !from || !to || typeof el.animate !== "function") return;
+    const dx = from.x - to.x, dy = from.y - to.y;
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+    if (el._glide) el._glide.cancel();
+    el._glide = el.animate(
+      [{ translate: dx + "px " + dy + "px" }, { translate: "0px 0px" }],
+      { duration: WALK_MS, easing: "cubic-bezier(.35,.1,.65,.9)" }
+    );
+  }
+  function walkFrom(character, wrap, from, badge, fromBadge) {
+    glide(character, from);
+    if (badge && fromBadge) glide(badge, fromBadge);
+    wrap.classList.remove("hop", "walk", "bump");
+    void wrap.offsetWidth;
+    wrap.classList.add("walk");
+    wrap.addEventListener("animationend", () => wrap.classList.remove("walk"), { once: true });
+  }
+
+  // Blocked "forward" (rock or edge): lean toward the blocked tile, wobble, back.
+  function bumpForward(character, wrap) {
+    if (!character || !wrap || reduced) return;
+    const pos = typeof gameState !== "undefined" && gameState && gameState.playerPos;
+    const cur = pos && document.getElementById(`cell-${pos.x}-${pos.y}`);
+    const step = [[-1, 0], [0, 1], [1, 0], [0, -1]][currentDir()];
+    if (cur && step && typeof character.animate === "function") {
+      const a = tileAnchor(cur);
+      const fwd = document.getElementById(`cell-${pos.x + step[0]}-${pos.y + step[1]}`);
+      const back = document.getElementById(`cell-${pos.x - step[0]}-${pos.y - step[1]}`);
+      let v = null;
+      if (fwd) { const b = tileAnchor(fwd); v = [b.x - a.x, b.y - a.y]; }
+      else if (back) { const b = tileAnchor(back); v = [a.x - b.x, a.y - b.y]; }
+      if (a && v) {
+        const k = 0.22, nx = (v[0] * k).toFixed(1), ny = (v[1] * k).toFixed(1);
+        const frames = [
+          { translate: "0px 0px" },
+          { translate: nx + "px " + ny + "px", offset: 0.35 },
+          { translate: (v[0] * -0.05).toFixed(1) + "px " + (v[1] * -0.05).toFixed(1) + "px", offset: 0.6 },
+          { translate: "0px 0px" }
+        ];
+        const opts = { duration: 420, easing: "ease-out" };
+        if (character._glide) character._glide.cancel();
+        character._glide = character.animate(frames, opts);
+        const badge = document.querySelector(".direction-indicator");
+        if (badge) { if (badge._glide) badge._glide.cancel(); badge._glide = badge.animate(frames, opts); }
+      }
+    }
+    wrap.classList.remove("hop", "walk", "bump");
+    void wrap.offsetWidth;
+    wrap.classList.add("bump");
+    wrap.addEventListener("animationend", () => wrap.classList.remove("bump"), { once: true });
   }
 
   function trackDuring(ms) {
@@ -408,7 +481,7 @@
           wrap.innerHTML = `<img class="robot-img robot-img-front robot-img-cheer" src="${cheerSrc}" alt="" aria-hidden="true" draggable="false">`;
         }
         if (!reduced) {
-          wrap.classList.remove("hop", "turning", "cheer");
+          wrap.classList.remove("hop", "walk", "bump", "turning", "cheer");
           void wrap.offsetWidth;
           wrap.classList.add("cheer");
         }
@@ -448,8 +521,20 @@
     if (typeof updatePlayerPosition === "function") {
       const orig = updatePlayerPosition;
       updatePlayerPosition = function () {
+        // a step that changes neither tile nor facing while running = blocked "forward"
+        let before = null;
+        try {
+          if (typeof gameState !== "undefined" && gameState && gameState.isExecuting && gameState.playerPos) {
+            before = { x: gameState.playerPos.x, y: gameState.playerPos.y, d: gameState.playerDirection };
+          }
+        } catch (e) {}
         orig.apply(this, arguments);
         afterPlayerUpdate();
+        if (before && lastStep && lastStep.x === before.x && lastStep.y === before.y && lastStep.d === before.d) {
+          const ch = document.querySelector(".character");
+          bumpForward(ch, ch && ch.querySelector(":scope > .robot"));
+        }
+        lastStep = before;
       };
     }
     if (typeof showResult === "function") {
@@ -467,6 +552,10 @@
       const orig = executeSequence;
       executeSequence = function () {
         hasRun = true;
+        try {
+          lastStep = (typeof gameState !== "undefined" && gameState && gameState.playerPos)
+            ? { x: gameState.playerPos.x, y: gameState.playerPos.y, d: gameState.playerDirection } : null;
+        } catch (e) { lastStep = null; }
         const ret = orig.apply(this, arguments);
         afterPlayerUpdate();
         return ret;
@@ -477,6 +566,7 @@
       resetGame = function () {
         document.querySelectorAll(".maze-cell.goal-lit").forEach((c) => c.classList.remove("goal-lit"));
         lastCellId = null;
+        lastStep = null;
         hasRun = false;
         cheering = false;
         orig.apply(this, arguments);
