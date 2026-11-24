@@ -519,7 +519,7 @@
     
     <script>
         // ===== 關卡設定：每個結構有 易／中／難 三關（網址 ?lv=1|2|3）=====
-        const STRUCT = {"key": "rep", "no": "02", "name": "重複結構", "file": "P02.html", "nextFile": "P03.html", "nextName": "選擇結構", "levels": [{"start": {"x": 0, "y": 0, "dir": 0}, "goal": {"x": 2, "y": 0}, "rocks": [[1, 0], [1, 1]], "cards": ["A", "B", "C", "D", "E"], "limit": 5, "subtitle": "最多 5 張牌！找出重複的動作，放進重複框裡。"}, {"start": {"x": 0, "y": 0, "dir": 2}, "goal": {"x": 3, "y": 3}, "rocks": [[0, 2], [1, 0], [1, 3], [2, 1], [2, 4], [3, 2]], "cards": ["A", "B", "C", "D", "E"], "limit": 6, "subtitle": "最多 6 張牌！像爬樓梯一樣，把重複的一組步驟框起來。"}, {"start": {"x": 4, "y": 3, "dir": 0}, "goal": {"x": 3, "y": 0}, "rocks": [[0, 1], [1, 0], [2, 0], [2, 3], [3, 2], [4, 0], [4, 1]], "cards": ["A", "B", "C", "D", "E"], "limit": 9, "subtitle": "最多 9 張牌！重複框前後還要一些步驟，哪些放框外？"}]};
+        const STRUCT = {"key": "rep", "no": "02", "name": "重複結構", "file": "P02.html", "nextFile": "P03.html", "nextName": "選擇結構", "levels": [{"start": {"x": 0, "y": 0, "dir": 0}, "goal": {"x": 2, "y": 0}, "rocks": [[1, 0], [1, 1]], "cards": ["A", "B", "C", "D", "E"], "limit": 5, "subtitle": "最多 5 張牌！找出重複的動作，放進重複框裡。"}, {"start": {"x": 0, "y": 0, "dir": 2}, "goal": {"x": 3, "y": 3}, "rocks": [[0, 2], [1, 0], [1, 3], [2, 1], [2, 4], [3, 2]], "cards": ["A", "B", "C", "D", "E"], "limit": 6, "subtitle": "最多 6 張牌！像爬樓梯一樣，把重複的一組步驟框起來。"}, {"start": {"x": 4, "y": 3, "dir": 0}, "goal": {"x": 4, "y": 1}, "rocks": [[0, 1], [1, 0], [2, 0], [2, 3], [3, 2], [4, 0], [4, 2]], "cards": ["A", "B", "C", "D", "E"], "limit": 8, "subtitle": "最多 8 張牌！重複框前後還要一些步驟，哪些放框外？"}]};
         const LV = (() => {
             const m = /[?&]lv=([123])/.exec(location.search);
             return m ? Number(m[1]) : 1;
