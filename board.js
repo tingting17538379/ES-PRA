@@ -403,42 +403,49 @@
       { duration: WALK_MS, easing: "cubic-bezier(.35,.1,.65,.9)" }
     );
   }
-  // Walk frames (NEON_BOARD.robotImages.frontRightWalk): while walking in a
-  // front-diagonal facing (front-left is the mirrored art), cycle through a
-  // frame list once per tile, then rest on the normal sprite. A list of N frames
-  // is shown in equal slices (default for 4: stand, stride B, stand, stride A),
-  // matched to the .walk-frames bob in clay.css. A single string is a
-  // one-frame swap for the first half of the step (legacy trial).
-  const WALK_FRAMES = (() => {
-    const w = cfg.robotImages && cfg.robotImages.frontRightWalk;
-    if (!w) return null;
-    return Array.isArray(w) ? w.filter(Boolean) : [w];
+  // Walk frames (NEON_BOARD.robotImages.frontRightWalk / backRightWalk): while
+  // walking in a diagonal facing (the *-left facings are the mirrored art), cycle
+  // through that view's frame list once per tile, then rest on the normal sprite.
+  // A list of N frames is shown in equal slices (default for 4: stand, stride B,
+  // stand, stride A), matched to the .walk-frames bob in clay.css. A single
+  // string is a one-frame swap for the first half of the step (legacy trial).
+  const frameList = (w) => (!w ? null : Array.isArray(w) ? w.filter(Boolean) : [w]);
+  const WALK_SETS = (() => {
+    const ri = cfg.robotImages || {};
+    const sets = {};
+    const fr = frameList(ri.frontRightWalk), br = frameList(ri.backRightWalk);
+    if (fr && ri.frontRight) sets.front = { frames: fr, rest: ri.frontRight };
+    if (br && (ri.backRight || ri.frontRight)) sets.back = { frames: br, rest: ri.backRight || ri.frontRight };
+    return sets;
   })();
-  if (WALK_FRAMES) {
+  const WALK_FRAMES = WALK_SETS.front ? WALK_SETS.front.frames : null;   // kept for older callers
+  if (Object.keys(WALK_SETS).length) {
     // preload + decode so swapping never shows a blank sprite
-    window.__walkFramePreload = [...new Set(WALK_FRAMES.concat(cfg.robotImages.frontRight || []))].map((src) => {
+    const all = [];
+    Object.values(WALK_SETS).forEach((set) => all.push(...set.frames, set.rest));
+    window.__walkFramePreload = [...new Set(all)].map((src) => {
       const im = new Image(); im.decoding = "sync"; im.src = src;
       if (im.decode) im.decode().catch(() => {});
       return im;
     });
   }
   function swapFeet(wrap) {
-    const ri = cfg.robotImages || {};
-    if (!WALK_FRAMES || !ri.frontRight) return false;
     const img = wrap.querySelector("img.robot-img-diag");
-    if (!img || !/^front-(left|right)$/.test(wrap.dataset.face || "")) return false;
+    const m = /^(front|back)-(left|right)$/.exec(wrap.dataset.face || "");
+    if (!img || !m) return false;
+    const side = m[1], set = WALK_SETS[side];
+    if (!set) return false;
     // only swap once every frame is decoded, so nothing flickers or aborts mid-load
     if (!(window.__walkFramePreload || []).every((im) => im.complete && im.naturalWidth)) return false;
-    const list = WALK_FRAMES.length > 1 ? WALK_FRAMES : [WALK_FRAMES[0], ri.frontRight];
+    const same = () => img.isConnected && (wrap.dataset.face || "").indexOf(side + "-") === 0;
+    const list = set.frames.length > 1 ? set.frames : [set.frames[0], set.rest];
     const slice = WALK_MS / list.length;
     list.forEach((src, i) => {
-      const set = () => { if (img.isConnected && /^front-/.test(wrap.dataset.face || "") && img.src !== src) img.src = src; };
-      if (i === 0) set(); else setTimeout(set, Math.round(slice * i));
+      const put = () => { if (same() && img.src !== src) img.src = src; };
+      if (i === 0) put(); else setTimeout(put, Math.round(slice * i));
     });
-    setTimeout(() => {
-      if (img.isConnected && /^front-/.test(wrap.dataset.face || "") && img.src !== ri.frontRight) img.src = ri.frontRight;
-    }, WALK_MS);
-    return WALK_FRAMES.length > 1;
+    setTimeout(() => { if (same() && img.src !== set.rest) img.src = set.rest; }, WALK_MS);
+    return set.frames.length > 1;
   }
   function walkFrom(character, wrap, from, badge, fromBadge) {
     glide(character, from);
