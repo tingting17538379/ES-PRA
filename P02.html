@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-<script async src="https://www.googletagmanager.com/gtm.js?id=GTM-NQQBX72P"></script>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5RP14NWHMG"></script>
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
   gtag('js', new Date());
+  gtag('config', 'G-5RP14NWHMG');
 </script>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -479,7 +481,6 @@
     <link rel="stylesheet" href="clay.css">
 </head>
 <body class="theme-light theme-clay">
-<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-NQQBX72P" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     <div class="game-container">
                 <header class="game-header">
         <div class="level-col">
@@ -558,25 +559,44 @@
         const TREASURE_POS = { x: LEVEL.goal.x, y: LEVEL.goal.y };
         const TRAPS = LEVEL.rocks.map(([x, y]) => ({ x, y }));
         const CARD_LIMIT = LEVEL.limit || 0;
-
-        // ===== GA4 / GTM 自訂事件（ESPRA_TRACK）=====
-        // 每次 push 都帶齊所有參數（不適用的設 undefined），避免 GTM 資料層沿用上一筆事件的值
-        window.ESPRA_SELECT = function (page, lv, source) {
-            const S = { P01: ['seq', '循序'], P02: ['rep', '重複'], P03: ['sel', '選擇'] }[page];
-            if (!S) return;
-            window.dataLayer = window.dataLayer || [];
-            window.dataLayer.push({
-                event: 'level_select',
+        /* ESPRA_TRACK：GA4 自訂事件共用函式 */
+        window.ESPRA_SEND = function (name, params, opts) {
+            var p = {}, k;
+            for (k in params) if (params[k] !== undefined && params[k] !== null) p[k] = params[k];
+            var cb = opts && opts.callback, done = false;
+            var go = function () { if (!done) { done = true; cb(); } };
+            // GA4 gtag.js 預設就用 keepalive/beacon 送出；這裡再等 event_callback（最多 0.5 秒）才換頁
+            if (cb) { p.event_callback = go; p.event_timeout = 400; setTimeout(go, 500); }
+            if (typeof window.gtag === 'function') window.gtag('event', name, p);
+            else if (cb) go();
+        };
+        window.ESPRA_LEVEL_PARAMS = function (page, lv) {
+            var S = { P01: ['seq', '循序'], P02: ['rep', '重複'], P03: ['sel', '選擇'] }[page];
+            if (!S) return null;
+            return {
                 level_id: S[0] + '_' + ['easy', 'medium', 'hard'][lv - 1],
                 level_page: page + '_lv' + lv,
                 level_number: (Number(page.slice(1)) - 1) * 3 + lv,
                 structure: S[1],
-                difficulty: ['易', '中', '難'][lv - 1],
-                card_limit: undefined, card_count: undefined, attempt_number: undefined,
-                time_spent_sec: undefined, fail_reason: undefined, rock_bumps: undefined, first_clear: undefined,
-                select_source: source
-            });
+                difficulty: ['易', '中', '難'][lv - 1]
+            };
         };
+        // 點了通往關卡的連結：送 level_select（beacon），送出或 0.5 秒後再換頁
+        window.ESPRA_SELECT_LINK = function (a, source, ev) {
+            var m = /(P0[123])\.html(?:\?lv=([123]))?/.exec(a.getAttribute('href') || '');
+            if (!m) return;
+            var p = window.ESPRA_LEVEL_PARAMS(m[1], Number(m[2] || 1));
+            if (!p) return;
+            p.select_source = source;
+            var newTab = ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey ||
+                         (a.target && a.target !== '_self');
+            if (newTab) { window.ESPRA_SEND('level_select', p, { beacon: true }); return; }
+            ev.preventDefault();
+            var href = a.href;
+            window.ESPRA_SEND('level_select', p, { beacon: true, callback: function () { location.href = href; } });
+        };
+
+        // ===== GA4 自訂事件（ESPRA_TRACK）=====
         const ESPRA_TRACK = (() => {
             const DIFF_KEYS = ['easy', 'medium', 'hard'];
             const base = {
@@ -587,17 +607,13 @@
                 difficulty: DIFF_NAMES[LV - 1],                             // 易／中／難
                 card_limit: CARD_LIMIT
             };
-            const EMPTY = { card_count: undefined, attempt_number: undefined, time_spent_sec: undefined,
-                            fail_reason: undefined, rock_bumps: undefined, select_source: undefined,
-                            first_clear: undefined };
             const t0 = Date.now();
             const key = 'espra_attempts_' + base.level_id;
             let attempts = 0;
             try { attempts = Number(sessionStorage.getItem(key)) || 0; } catch (e) {}
             const run = { active: false, bumps: 0, reason: null, won: false, reset: false };
             function push(event, extra) {
-                window.dataLayer = window.dataLayer || [];
-                window.dataLayer.push(Object.assign({ event: event }, base, EMPTY, extra || {}));
+                window.ESPRA_SEND(event, Object.assign({}, base, extra || {}));
             }
             return {
                 base, run, push,
@@ -1201,11 +1217,8 @@
         // 關卡內切換難度／下一關的連結也記為 level_select
         document.addEventListener('click', (ev) => {
             const a = ev.target.closest && ev.target.closest('a.diff-pill, a.next-level');
-            if (!a) return;
-            const m = /(P0[123])\.html\?lv=([123])/.exec(a.getAttribute('href') || '');
-            if (!m) return;
-            window.ESPRA_SELECT && window.ESPRA_SELECT(m[1], Number(m[2]),
-                a.classList.contains('next-level') ? 'next_level' : 'difficulty_pill');
+            if (!a || a.classList.contains('is-current')) return;
+            window.ESPRA_SELECT_LINK(a, a.classList.contains('next-level') ? 'next_level' : 'difficulty_pill', ev);
         }, true);
 
         document.addEventListener('DOMContentLoaded', () => {
