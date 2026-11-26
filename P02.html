@@ -676,7 +676,9 @@
                 attempts: () => attempts
             };
         })();
-        ESPRA_TRACK.push('level_start', { attempt_number: ESPRA_TRACK.attempts() });
+        ESPRA_TRACK.push('level_start', { attempt_number: ESPRA_TRACK.attempts(),
+            run_mode: (() => { try { return sessionStorage.getItem('espra_run_mode') === 'step' ? 'step' : 'all'; } catch (e) { return 'all'; } })(),
+            speed: (() => { try { return Number(sessionStorage.getItem('espra_speed')) || 1; } catch (e) { return 1; } })() });
 
         // 預設配置
         const defaultConfig = {
@@ -1040,34 +1042,63 @@
         })();
         const stepMs = () => Math.round(BASE_STEP_MS / runOpts.speed);
         let runner = null;          // 目前這一次執行
-        // GA4：執行流程的事件（level_run / level_pause / level_complete / level_fail / level_reset）
+        // GA4：遊戲流程事件（追蹤規劃 r7）
+        // level_run / level_pause / level_complete / level_fail / level_reset / mode_change / speed_change / level_exit
+        const ESPRA_PAGE = { runs: 0, cleared: 0, lastOutcome: 'none', exitSent: false };
+        function runSummary(r) {
+            return { card_count: r.cards, attempt_number: r.attempt, run_mode: r.mode, speed: runOpts.speed,
+                     time_spent_sec: ESPRA_TRACK.secs(), run_sec: Math.round((Date.now() - r.t0) / 1000),
+                     rock_bumps: r.bumps, step_total: r.steps.length, pause_count: r.pauses, step_presses: r.stepPresses,
+                     mode_switched: r.modeSwitched, speed_switched: r.speedSwitched };
+        }
         function trackHook(name, r) {
             const T = ESPRA_TRACK;
             if (name === 'run_start') {
                 r.cards = cardCount(); r.attempt = T.nextAttempt();
+                ESPRA_PAGE.runs += 1; ESPRA_PAGE.lastOutcome = 'running';
                 T.push('level_run', { card_count: r.cards, attempt_number: r.attempt, run_mode: r.mode, speed: r.speed });
             } else if (name === 'pause') {
                 T.push('level_pause', { card_count: r.cards, attempt_number: r.attempt, run_mode: runOpts.mode, speed: runOpts.speed,
-                                        step_index: r.i, step_total: r.steps.length, time_spent_sec: T.secs() });
+                                        step_index: r.i, step_total: r.steps.length, pause_count: r.pauses });
             } else if (name === 'run_end') {
-                const common = { card_count: r.cards, attempt_number: r.attempt, run_mode: r.mode, speed: runOpts.speed,
-                                 time_spent_sec: T.secs(), rock_bumps: r.bumps, step_total: r.steps.length };
+                const p = runSummary(r);
                 if (r.outcome === 'win') {
                     let first = 1;
                     try { const k = 'espra_cleared_' + T.base.level_id;
                           first = sessionStorage.getItem(k) ? 0 : 1; sessionStorage.setItem(k, '1'); } catch (e) {}
-                    T.push('level_complete', Object.assign(common, { first_clear: first }));
+                    ESPRA_PAGE.cleared = 1; ESPRA_PAGE.lastOutcome = 'win';
+                    T.push('level_complete', Object.assign(p, { first_clear: first, first_try: r.attempt === 1 ? 1 : 0 }));
                 } else {
                     const reason = r.outcome === 'abort' ? 'reset_during_run'
                                  : r.reason || (r.bumps > 0 ? 'hit_rock' : 'not_reached');
-                    T.push('level_fail', Object.assign(common, { fail_reason: reason, passed_sapling: r.passedGoal ? 1 : 0,
-                                                                 step_index: r.i }));
+                    ESPRA_PAGE.lastOutcome = 'fail';
+                    T.push('level_fail', Object.assign(p, { fail_reason: reason, passed_sapling: r.passedGoal ? 1 : 0, step_index: r.i }));
                 }
             } else if (name === 'reset') {
                 T.push('level_reset', { card_count: cardCount(), attempt_number: T.attempts(), time_spent_sec: T.secs(),
                                         during_run: r && !r.done ? 1 : 0 });
+            } else if (name === 'mode_change' || name === 'speed_change') {
+                const run = r.run;
+                const extra = name === 'mode_change' ? { from_mode: r.from, to_mode: r.to, speed: runOpts.speed }
+                                                     : { from_speed: r.from, to_speed: r.to, run_mode: runOpts.mode };
+                T.push(name, Object.assign(extra, { during_run: run ? 1 : 0, attempt_number: run ? run.attempt : T.attempts(),
+                                                    time_spent_sec: T.secs() }));
             }
         }
+        // 離開關卡頁（關分頁、換頁、切到背景）：送一次 level_exit，記錄最後狀態
+        function sendLevelExit() {
+            if (ESPRA_PAGE.exitSent) return;
+            ESPRA_PAGE.exitSent = true;
+            const r = runner && !runner.done ? runner : null;
+            ESPRA_TRACK.push('level_exit', { exit_state: r ? 'running' : ESPRA_PAGE.lastOutcome, cleared: ESPRA_PAGE.cleared,
+                                             attempt_number: ESPRA_PAGE.runs, time_spent_sec: ESPRA_TRACK.secs(),
+                                             card_count: cardCount(), run_mode: runOpts.mode, speed: runOpts.speed });
+        }
+        window.addEventListener('pagehide', sendLevelExit);
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') sendLevelExit();
+            else ESPRA_PAGE.exitSent = false;      // 回到分頁：之後離開會再記一次
+        });
 
         // 做一個動作（A 前進、B 左轉、C 右轉、F/G 條件前進）
         function applyMove(command) {
@@ -1174,9 +1205,58 @@
                 }
             }
             const t = seqTok(s.key);
-            if (t) {
-                t.classList.remove('is-done'); t.classList.add('is-active');
-                if (t.scrollIntoView && runOpts.mode === 'step') { try { t.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) {} }
+            if (t) { t.classList.remove('is-done'); t.classList.add('is-active'); }
+            // 進入重複框（每一次的第一張）時，連重複牌一起捲進可視範圍
+            const head = s.loop !== null && s.j === 0 ? seqTok(s.loop + ':h') : null;
+            revealInSequence([head, t]);
+        }
+
+        // ===== 自動捲動（r7）：正在執行的牌不在可視範圍時，捲到看得見 =====
+        // 桌機：只捲「指令序列」框本身。手機：序列框跟著整頁捲，只有使用者正在看指令序列時才捲整頁，
+        // 不會把畫面從棋盤拉走。手指／滑鼠按著（拖曳或自己捲動）時不自動捲。
+        let pointerHeld = false;
+        document.addEventListener('pointerdown', () => { pointerHeld = true; }, true);
+        ['pointerup', 'pointercancel'].forEach(ev => document.addEventListener(ev, () => { pointerHeld = false; }, true));
+        function seqScroller() {
+            for (let el = document.getElementById('sequenceArea'); el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
+                const oy = getComputedStyle(el).overflowY;
+                if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight + 1) return el;
+            }
+            return null;
+        }
+        function scrollDelta(rects, target, vt, vb) {
+            let top = Math.min(...rects.map(r => r.top)), bottom = Math.max(...rects.map(r => r.bottom));
+            if (bottom - top > vb - vt) { top = target.top; bottom = target.bottom; }   // 放不下就只顧正在執行的牌
+            if (top < vt) return top - vt;
+            if (bottom > vb) return bottom - vb;
+            return 0;
+        }
+        function revealInSequence(els) {
+            els = els.filter(Boolean);
+            if (!els.length || pointerHeld) return;
+            const PAD = 12;
+            const rects = els.map(e => e.getBoundingClientRect());
+            const target = rects[rects.length - 1];
+            const behavior = runOpts.speed >= 1.5 || window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+            const sc = seqScroller();
+            if (sc) {
+                const box = sc.getBoundingClientRect();
+                const d = scrollDelta(rects, target, box.top + PAD, box.bottom - PAD);
+                if (Math.abs(d) >= 1) sc.scrollBy({ top: d, behavior });
+                return;
+            }
+            // 手機版：可視範圍要扣掉底部固定的按鈕列
+            let vb = window.innerHeight;
+            const bar = document.querySelector('.status-area');
+            if (bar && getComputedStyle(bar).position === 'fixed') vb = Math.min(vb, bar.getBoundingClientRect().top);
+            const area = document.getElementById('sequenceArea').getBoundingClientRect();
+            if (area.top > vb * 0.6 || area.bottom < 40) return;   // 使用者正在看棋盤 → 不拉走畫面
+            const d = scrollDelta(rects, target, PAD, vb - PAD);
+            if (Math.abs(d) >= 1) window.scrollBy({ top: d, behavior });
+        }
+        function scrollSequenceTop() {
+            for (let el = document.getElementById('sequenceArea'); el && el !== document.body; el = el.parentElement) {
+                if (el.scrollTop) el.scrollTop = 0;
             }
         }
         function finishProgress(last) {
@@ -1283,11 +1363,13 @@
             document.getElementById('resultMessage').textContent = '';
             document.getElementById('resultMessage').className = 'result-message';
             clearProgress();
+            scrollSequenceTop();
 
             const r = runner = {
                 steps: buildSteps(gameState.sequence), i: 0, paused: false, abort: false,
                 budget: runOpts.mode === 'step' ? 1 : 0, wake: null, busy: false, waiting: false, done: false,
-                mode: runOpts.mode, speed: runOpts.speed, bumps: 0, reason: null, passedGoal: false
+                mode: runOpts.mode, speed: runOpts.speed, bumps: 0, reason: null, passedGoal: false,
+                pauses: 0, stepPresses: runOpts.mode === 'step' ? 1 : 0, modeSwitched: 0, speedSwitched: 0, t0: Date.now()
             };
             trackHook('run_start', r);
             setRunUI();
@@ -1325,6 +1407,7 @@
             if (!r) { executeSequence(); return; }
             if (runOpts.mode === 'step') {
                 if (r.busy) return;
+                r.stepPresses += 1;
                 r.budget = 1;
                 if (r.wake) r.wake();
             } else if (r.paused) {
@@ -1332,6 +1415,7 @@
                 if (r.wake) r.wake();
             } else {
                 r.paused = true;
+                r.pauses += 1;
                 trackHook('pause', r);
             }
             setRunUI();
@@ -1339,9 +1423,13 @@
         function setRunMode(mode) {
             if (mode !== 'all' && mode !== 'step') return;
             const r = runner && !runner.done ? runner : null;
-            if (r && mode !== runOpts.mode) {
-                if (mode === 'all') r.paused = true;     // 切到全部執行：等按「繼續」
-                else r.budget = 0;                       // 切到逐步執行：做完這一步就停
+            if (mode !== runOpts.mode) {
+                trackHook('mode_change', { from: runOpts.mode, to: mode, run: r });
+                if (r) {
+                    r.modeSwitched = 1;
+                    if (mode === 'all') r.paused = true;     // 切到全部執行：等按「繼續」
+                    else r.budget = 0;                       // 切到逐步執行：做完這一步就停
+                }
             }
             runOpts.mode = mode;
             try { sessionStorage.setItem('espra_run_mode', mode); } catch (e) {}
@@ -1350,6 +1438,11 @@
         }
         function setRunSpeed(speed) {
             if (!SPEEDS.includes(speed)) return;
+            if (speed !== runOpts.speed) {
+                const r = runner && !runner.done ? runner : null;
+                trackHook('speed_change', { from: runOpts.speed, to: speed, run: r });
+                if (r) r.speedSwitched = 1;
+            }
             runOpts.speed = speed;
             try { sessionStorage.setItem('espra_speed', String(speed)); } catch (e) {}
             setRunUI();
@@ -1388,6 +1481,7 @@
             document.getElementById('resultMessage').className = 'result-message';
             document.getElementById('executeBtn').disabled = false;
             if (typeof setRunUI === 'function') setRunUI();
+            if (typeof scrollSequenceTop === 'function') scrollSequenceTop();
         }
 
         // --- 事件監聽器與初始化 ---
